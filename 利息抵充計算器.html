@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>利息抵充計算器</title>
+<link rel="stylesheet" href="assets/tool-ui.css">
+<style>
+.two { display: grid; grid-template-columns: 320px 1fr; }
+@media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+.pane { padding: 18px; min-width: 0; }
+.pane + .pane { border-left: 1px solid var(--line-soft); }
+@media (max-width: 860px) { .pane + .pane { border-left: none; border-top: 1px solid var(--line-soft); } }
+
+.pay-row { display: grid; grid-template-columns: 1fr 110px 26px; gap: 6px; margin-bottom: 6px; align-items: center; }
+.pay-row input[type="date"] { width: 100%; padding: 5px 7px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 3px; font-size: 12.5px; }
+.pay-row input[type="number"] { width: 100%; padding: 5px 7px; text-align: right; background: var(--surface-2); border: 1px solid var(--line); border-radius: 3px; font-family: var(--mono); font-size: 12.5px; }
+.pay-row button { padding: 3px 8px; line-height: 1.2; color: var(--faint); border-color: transparent; background: transparent; }
+.pay-row button:hover { color: var(--seal); }
+.head-row { display: grid; grid-template-columns: 1fr 110px 26px; gap: 6px; font-size: 11px; letter-spacing: .1em; color: var(--faint); margin-bottom: 5px; }
+.head-row span:nth-child(2) { text-align: right; }
+
+.sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line-soft); border: 1px solid var(--line-soft); border-radius: 3px; overflow: hidden; margin-bottom: 16px; }
+.sum div { background: var(--surface); padding: 12px 14px; }
+.sum dt { font-size: 11.5px; color: var(--muted); letter-spacing: .06em; margin: 0 0 4px; }
+.sum dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 19px; font-weight: 600; }
+.sum dd.bad { color: var(--seal); }
+.sum dd.good { color: var(--good); }
+.conclusion { font-family: var(--kai); font-size: 15.5px; line-height: 1.9; background: var(--surface-2); border-left: 3px solid var(--accent); padding: 12px 16px; border-radius: 0 3px 3px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <a class="seal" href="index.html" title="回工具箱">抵</a>
+  <div>
+    <h1>利息抵充計算器</h1>
+    <p>依民法 323 條「先充費用、次充利息、次充原本」，逐筆計算每次受償後的未償餘額。</p>
+  </div>
+  <div class="spacer"></div>
+  <a class="back" href="index.html">← 工具箱</a>
+</header>
+
+<section class="panel">
+  <h2><span class="t">① 債權與受償明細</span>
+    <span class="spacer"></span>
+    <span class="note">任何一欄改了就重算</span>
+  </h2>
+  <div class="two">
+    <div class="pane">
+      <div class="field"><label for="f_principal">本金</label><input type="number" id="f_principal" step="1" value="0"></div>
+      <div class="field"><label for="f_rate">年利率<span class="spec">%</span></label><input type="number" id="f_rate" step="0.01" value="5"></div>
+      <div class="toolbar" style="margin:-2px 0 10px">
+        <button class="ghost" data-rate="5" style="font-size:12px">法定 5%</button>
+        <button class="ghost" data-rate="16" style="font-size:12px">上限 16%</button>
+        <button class="ghost" data-rate="0" style="font-size:12px">不計息</button>
+      </div>
+      <div class="field wide"><label for="f_from">利息起算日</label><input type="date" id="f_from"></div>
+      <div class="field wide"><label for="f_to">計算至</label><input type="date" id="f_to"></div>
+      <div class="field"><label for="f_fee">費用合計<span class="spec">執行費等</span></label><input type="number" id="f_fee" step="1" value="0"></div>
+      <div class="field"><label for="f_basis">計息基準</label>
+        <select id="f_basis"><option value="365">一年 365 日</option><option value="actual">實際年日數（閏年 366）</option></select></div>
+
+      <h3 style="font-size:11.5px;letter-spacing:.16em;color:var(--accent);margin:20px 0 10px">受償明細</h3>
+      <div class="head-row"><span>日期</span><span>金額</span><span></span></div>
+      <div id="pays"></div>
+      <button id="btnAdd" style="width:100%;margin-top:6px">＋ 加一筆受償</button>
+      <p class="hint">受償＝實際收到的錢（撥款、執行分配、對方清償）。日期會自動排序，早於利息起算日的受償不計期間利息。</p>
+    </div>
+
+    <div class="pane">
+      <div class="sum" id="sum"></div>
+      <div class="conclusion" id="conclusion"></div>
+      <div class="scroll-x" style="margin-top:16px">
+        <table class="tbl" id="tbl">
+          <thead><tr>
+            <th>日期</th><th class="num">天數</th><th class="num">期間利息</th><th class="num">受償</th>
+            <th class="num">抵費用</th><th class="num">抵利息</th><th class="num">抵本金</th>
+            <th class="num">未償費用</th><th class="num">未償利息</th><th class="num">未償本金</th>
+          </tr></thead><tbody></tbody>
+        </table>
+      </div>
+      <div class="toolbar" style="margin-top:14px">
+        <button id="btnCopy" class="primary">複製算式（可貼進狀子）</button>
+        <button class="ghost" id="btnSample">載入範例</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2><span class="t">② 法條依據與假設</span></h2>
+  <div class="body">
+    <table class="tbl"><tbody>
+      <tr><td style="white-space:nowrap"><b>民法 323</b></td><td>清償人所提出之給付，應先抵充費用，次充利息，次充原本；其依前二條之規定抵充債務者亦同。</td></tr>
+      <tr><td style="white-space:nowrap"><b>民法 203</b></td><td>應付利息之債務，其利率未經約定，亦無法律可據者，週年利率為百分之五。</td></tr>
+      <tr><td style="white-space:nowrap"><b>民法 205</b></td><td>約定利率超過週年百分之十六者，超過部分之約定，無效。</td></tr>
+    </tbody></table>
+    <p class="hint">
+      本工具的計算假設：<b>單利</b>、按日計息（本金 × 年利率 ÷ 基準日數 × 天數）、利息只就<b>未償本金</b>累計、
+      受償當日計入前一期間。複利、遲延利息另計違約金、分段適用不同利率者，本工具不處理——那種情形要人算。
+    </p>
+  </div>
+</section>
+
+<footer class="foot">
+  算出來的數字要進狀子前，<strong>務必核對執行處或債權憑證上的實際金額</strong>。
+  口徑提醒：主張「本金雖受償，但依抵充順序仍未足額」，不要說成「撥款不生清償效力」。
+</footer>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const nf = n => Math.round(n).toLocaleString("en-US");
+const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const parseD = v => { if (!v) return null; const [y, m, d] = v.split("-").map(Number); return new Date(y, m - 1, d); };
+const days = (a, b) => Math.round((b - a) / 86400000);
+
+/* ── 受償列 ─────────────────────────────────────────────── */
+function addPay(date = "", amount = "") {
+  const row = document.createElement("div");
+  row.className = "pay-row";
+  row.innerHTML = `<input type="date" value="${date}"><input type="number" step="1" value="${amount}" placeholder="0"><button title="刪除">✕</button>`;
+  row.querySelectorAll("input").forEach(el => el.addEventListener("input", calc));
+  row.querySelector("button").addEventListener("click", () => { row.remove(); calc(); });
+  $("pays").appendChild(row);
+}
+function readPays() {
+  return [...$("pays").children].map(r => {
+    const [d, a] = r.querySelectorAll("input");
+    return { date: parseD(d.value), amount: parseFloat(a.value || 0) || 0 };
+  }).filter(p => p.date && p.amount > 0).sort((x, y) => x.date - y.date);
+}
+
+/* ── 主計算：民法 323 逐筆抵充 ──────────────────────────── */
+function calc() {
+  const P0 = parseFloat($("f_principal").value || 0) || 0;
+  const rate = (parseFloat($("f_rate").value || 0) || 0) / 100;
+  const fee0 = parseFloat($("f_fee").value || 0) || 0;
+  const from = parseD($("f_from").value), to = parseD($("f_to").value);
+  const basisMode = $("f_basis").value;
+  const pays = readPays();
+
+  const tbody = $("tbl").querySelector("tbody");
+  if (!from || !to || to < from) {
+    tbody.innerHTML = `<tr><td colspan="10" style="color:var(--faint)">請填利息起算日與計算截止日（截止日不得早於起算日）。</td></tr>`;
+    $("sum").innerHTML = ""; $("conclusion").textContent = ""; return;
+  }
+
+  const basis = d => basisMode === "365" ? 365
+    : ((d.getFullYear() % 4 === 0 && d.getFullYear() % 100 !== 0) || d.getFullYear() % 400 === 0) ? 366 : 365;
+
+  let principal = P0, fee = fee0, interest = 0, cursor = from;
+  let paidFee = 0, paidInt = 0, paidPrin = 0, received = 0;
+  const rows = [], lines = [];
+
+  const accrue = upto => {
+    if (upto <= cursor) return 0;
+    const n = days(cursor, upto);
+    const add = principal * rate * n / basis(cursor);
+    interest += add; cursor = upto;
+    return { n, add };
+  };
+
+  pays.forEach(p => {
+    const at = p.date < from ? from : p.date;
+    const acc = accrue(at) || { n: 0, add: 0 };
+    let left = p.amount;
+    received += p.amount;
+    const toFee = Math.min(fee, left);      fee -= toFee;      left -= toFee;      paidFee += toFee;
+    const toInt = Math.min(interest, left); interest -= toInt; left -= toInt;      paidInt += toInt;
+    const toPrin = Math.min(principal, left); principal -= toPrin; left -= toPrin; paidPrin += toPrin;
+    rows.push({ date: fmt(p.date), n: acc.n, acc: acc.add, pay: p.amount, toFee, toInt, toPrin, fee, interest, principal, over: left });
+    lines.push(`${fmt(p.date)} 受償 ${nf(p.amount)} 元：抵費用 ${nf(toFee)}、抵利息 ${nf(toInt)}、抵本金 ${nf(toPrin)}` +
+      (left > 0.5 ? `，溢收 ${nf(left)}` : "") + `，餘：費用 ${nf(fee)}／利息 ${nf(interest)}／本金 ${nf(principal)}`);
+  });
+
+  const tail = accrue(to) || { n: 0, add: 0 };
+  if (tail.n) rows.push({ date: fmt(to), n: tail.n, acc: tail.add, pay: 0, toFee: 0, toInt: 0, toPrin: 0, fee, interest, principal, tail: true });
+
+  tbody.innerHTML = rows.map(r => `<tr${r.tail ? ' class="total"' : ""}>
+    <td>${r.date}${r.tail ? "（計算截止）" : ""}</td>
+    <td class="num">${r.n}</td><td class="num">${nf(r.acc)}</td><td class="num">${r.pay ? nf(r.pay) : "—"}</td>
+    <td class="num">${r.toFee ? nf(r.toFee) : "—"}</td><td class="num">${r.toInt ? nf(r.toInt) : "—"}</td><td class="num">${r.toPrin ? nf(r.toPrin) : "—"}</td>
+    <td class="num">${nf(r.fee)}</td><td class="num">${nf(r.interest)}</td><td class="num">${nf(r.principal)}</td></tr>`).join("")
+    || `<tr><td colspan="10" style="color:var(--faint)">還沒有受償紀錄——下表會顯示到截止日為止累計的利息。</td></tr>`;
+
+  const owed = fee + interest + principal;
+  $("sum").innerHTML = `
+    <div><dt>已受償合計</dt><dd>${nf(received)}</dd></div>
+    <div><dt>未償費用</dt><dd class="${fee > 0.5 ? "bad" : "good"}">${nf(fee)}</dd></div>
+    <div><dt>未償利息</dt><dd class="${interest > 0.5 ? "bad" : "good"}">${nf(interest)}</dd></div>
+    <div><dt>未償本金</dt><dd class="${principal > 0.5 ? "bad" : "good"}">${nf(principal)}</dd></div>
+    <div><dt>合計未償</dt><dd class="${owed > 0.5 ? "bad" : "good"}">${nf(owed)}</dd></div>`;
+
+  $("conclusion").innerHTML = owed > 0.5
+    ? `債權人雖已受償新臺幣 <b>${nf(received)}</b> 元，惟依民法第 323 條先充費用、次充利息、次充原本之抵充順序計算，
+       截至 ${fmt(to)} 止，尚有費用 <b>${nf(fee)}</b> 元、利息 <b>${nf(interest)}</b> 元、本金 <b>${nf(principal)}</b> 元
+       <b>合計新臺幣 ${nf(owed)} 元未受清償</b>。`
+    : `截至 ${fmt(to)} 止，費用、利息及本金均已受償完畢（受償合計 ${nf(received)} 元）。`;
+
+  window.__report = [
+    `民法 323 抵充試算（${new Date().toLocaleString("zh-TW")}）`,
+    `本金 ${nf(P0)}　年利率 ${(rate * 100).toFixed(2)}%　費用 ${nf(fee0)}　期間 ${fmt(from)} ～ ${fmt(to)}`,
+    ...lines,
+    `截至 ${fmt(to)}：未償費用 ${nf(fee)}、未償利息 ${nf(interest)}、未償本金 ${nf(principal)}，合計 ${nf(owed)} 元。`,
+    `（單利、按日計息、基準 ${basisMode === "365" ? "365 日" : "實際年日數"}）`
+  ].join("\n");
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2400);
+}
+
+["f_principal", "f_rate", "f_fee", "f_from", "f_to"].forEach(id => $(id).addEventListener("input", calc));
+$("f_basis").addEventListener("change", calc);
+$("btnAdd").addEventListener("click", () => { addPay(fmt(new Date()), ""); });
+document.querySelectorAll("[data-rate]").forEach(b =>
+  b.addEventListener("click", () => { $("f_rate").value = b.dataset.rate; calc(); }));
+$("btnCopy").addEventListener("click", async () => {
+  if (!window.__report) return toast("還沒有可複製的算式");
+  try { await navigator.clipboard.writeText(window.__report); toast("已複製算式"); }
+  catch (e) { toast("瀏覽器擋下複製，請手動選取"); }
+});
+$("btnSample").addEventListener("click", () => {
+  $("f_principal").value = 7086830;
+  $("f_rate").value = 5;
+  $("f_fee").value = 58005;
+  $("f_from").value = "2025-01-23";
+  $("f_to").value = fmt(new Date());
+  $("pays").innerHTML = "";
+  addPay("2025-06-30", "682683");
+  addPay("2025-08-15", "6400000");
+  calc();
+});
+
+// 初始：起算日空白等使用者填，截止日預設今天，先給一列受償
+$("f_to").value = fmt(new Date());
+addPay();
+calc();
+</script>
+</body>
+</html>

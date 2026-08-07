@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>訴訟工具箱</title>
+<link rel="stylesheet" href="assets/tool-ui.css">
+<style>
+/* 首頁專屬：工具卡片 */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.card {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 18px 18px 16px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 4px;
+  text-decoration: none; color: inherit;
+  transition: border-color .14s, transform .14s, box-shadow .14s;
+}
+.card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow); }
+.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.card .row { display: flex; align-items: baseline; gap: 10px; }
+.card h3 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: .04em; }
+.card .arrow { margin-left: auto; color: var(--faint); font-size: 15px; }
+.card:hover .arrow { color: var(--accent); }
+.card p { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.65; }
+.card .when {
+  margin-top: 2px; padding-top: 9px; border-top: 1px dashed var(--line-soft);
+  font-size: 12px; color: var(--faint); line-height: 1.6;
+}
+.card .when b { color: var(--muted); font-weight: 600; }
+.sect-label {
+  font-size: 11.5px; font-weight: 700; letter-spacing: .18em; color: var(--muted);
+  margin: 26px 0 12px;
+}
+.sect-label:first-of-type { margin-top: 0; }
+.notes { margin-top: 30px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+.note-box { border-left: 2px solid var(--line); padding-left: 14px; }
+.note-box h4 { margin: 0 0 5px; font-size: 13px; }
+.note-box p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <span class="seal">具</span>
+  <div>
+    <h1>訴訟工具箱</h1>
+    <p>房屋買賣糾紛系列案件的自用工具。全部離線運作，貼進去的內容不會送到任何伺服器。</p>
+  </div>
+  <div class="spacer"></div>
+  <span class="chip"><span class="dot"></span>零額度・離線可用</span>
+</header>
+
+<div class="sect-label">起草與排版</div>
+<div class="cards">
+
+  <a class="card" href="書狀排版器.html">
+    <div class="row"><h3>書狀排版器</h3><span class="arrow">→</span></div>
+    <p>貼上整篇純文字，自動判讀狀名、案號股別、當事人欄、壹一（一）1. 各層編號、證據清單、謹狀，套成標楷體 16pt／1.5 行距／A4 的court版面。下方所有排版參數可即時調整。</p>
+    <div class="when"><b>什麼時候用</b>：手上有一坨沒排版的文字，想立刻看到送出去長什麼樣，或要直接列印、貼進 Google 文件。</div>
+  </a>
+
+  <a class="card" href="金額大寫轉換.html">
+    <div class="row"><h3>金額大寫轉換</h3><span class="arrow">→</span></div>
+    <p>阿拉伯數字轉國字大寫：<span style="font-family:var(--kai)">1802683 → 新臺幣壹佰捌拾萬貳仟陸佰捌拾參元整</span>。可一次貼多筆，逐行轉換。</p>
+    <div class="when"><b>什麼時候用</b>：聲明、和解書、本票、支票金額要寫大寫時。</div>
+  </a>
+
+</div>
+
+<div class="sect-label">定稿前的檢查</div>
+<div class="cards">
+
+  <a class="card" href="引文比對器.html">
+    <div class="row"><h3>引文比對器</h3><span class="arrow">→</span></div>
+    <p>左邊貼判決／筆錄全文，右邊貼你狀子裡的「」引文，逐字比對是不是原文的連續子字串；對不上時直接標出多了什麼字、少了什麼字。規則與 <code>verify_quotes.py</code> 相同（去空白、支援「……」切段）。</p>
+    <div class="when"><b>什麼時候用</b>：定稿前的機器關，或在外面用手機臨時核一段引文。<b>一字不漏鐵律</b>的第一道防線。</div>
+  </a>
+
+  <a class="card" href="證據編號檢查器.html">
+    <div class="row"><h3>證據編號檢查器</h3><span class="arrow">→</span></div>
+    <p>貼上狀子全文，抓出證據清單與內文所有「（參原證N）」引用，列出跳號、重複編號、清單有卻沒引用、內文引用卻不在清單、中文與阿拉伯數字混用。</p>
+    <div class="when"><b>什麼時候用</b>：狀子改過好幾輪、證物增刪之後，送出去之前。</div>
+  </a>
+
+</div>
+
+<div class="sect-label">日期與金額試算</div>
+<div class="cards">
+
+  <a class="card" href="期限計算器.html">
+    <div class="row"><h3>期限計算器</h3><span class="arrow">→</span></div>
+    <p>輸入送達日與期間（上訴 20 日、抗告 10 日、再審 30 日或自訂），依民法 120 條第 2 項「始日不算入」起算，末日遇例假日依民法 122 條順延，並可加計在途期間。</p>
+    <div class="when"><b>什麼時候用</b>：收到判決、裁定、通知書的當天，先算出真正的到期日。<b>結果務必再與法院通知核對。</b></div>
+  </a>
+
+  <a class="card" href="利息抵充計算器.html">
+    <div class="row"><h3>利息抵充計算器</h3><span class="arrow">→</span></div>
+    <p>輸入本金、利率、費用與各筆受償（日期＋金額），依民法 323 條「先充費用、次充利息、次充原本」逐筆抵充，算出每筆之後的未償餘額與最終缺口。</p>
+    <div class="when"><b>什麼時候用</b>：主張「本金雖已受償，但依抵充順序仍未足額」時，要拿出算式。</div>
+  </a>
+
+</div>
+
+<div class="notes">
+  <div class="note-box">
+    <h4>怎麼開</h4>
+    <p>本機直接雙擊 <code>50_工具/index.html</code>；手機用瀏覽器開網址後可「加到主畫面」，就像 App 一樣。</p>
+  </div>
+  <div class="note-box">
+    <h4>資料安全</h4>
+    <p>全部計算都在你的瀏覽器裡跑，沒有任何連線。設定值存在這台裝置的瀏覽器，換一台就要重設。</p>
+  </div>
+  <div class="note-box">
+    <h4>這些工具不取代什麼</h4>
+    <p>正式送件版本仍以 <code>make_docx.py</code> 產的 .docx 為準；引文最終仍要點開司法院網址人工二次確認；期限一律以法院通知為準。</p>
+  </div>
+</div>
+
+<footer class="foot" style="margin-top:36px">
+  規格來源：<code>00_範本/格式規格.md</code>、<code>AGENTS.md</code>。工具原始碼在 <code>50_工具/</code>，共用外觀在 <code>assets/tool-ui.css</code>。
+</footer>
+
+</div>
+</body>
+</html>

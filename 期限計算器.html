@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>期限計算器</title>
+<link rel="stylesheet" href="assets/tool-ui.css">
+<style>
+.big {
+  font-family: var(--kai); font-size: 30px; font-weight: 700; letter-spacing: .04em;
+  line-height: 1.35; margin: 0;
+}
+.big small { display: block; font-size: 14px; font-weight: 400; color: var(--muted); letter-spacing: normal; margin-top: 6px; font-family: var(--ui); }
+.countdown { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.steps { counter-reset: s; margin: 0; padding: 0; list-style: none; }
+.steps li {
+  position: relative; padding: 8px 0 8px 34px; font-size: 13.5px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.steps li:last-child { border-bottom: none; }
+.steps li::before {
+  counter-increment: s; content: counter(s);
+  position: absolute; left: 0; top: 9px;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 11px; font-family: var(--mono); display: grid; place-items: center;
+}
+.steps li b { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.steps li small { display: block; color: var(--faint); font-size: 11.5px; margin-top: 2px; }
+.two { display: grid; grid-template-columns: 300px 1fr; gap: 0; }
+@media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
+.pane { padding: 18px; min-width: 0; }
+.pane + .pane { border-left: 1px solid var(--line-soft); }
+@media (max-width: 760px) { .pane + .pane { border-left: none; border-top: 1px solid var(--line-soft); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <a class="seal" href="index.html" title="回工具箱">期</a>
+  <div>
+    <h1>期限計算器</h1>
+    <p>輸入送達日與期間，依民法 120 條第 2 項「始日不算入」起算，末日遇休息日依民法 122 條順延。</p>
+  </div>
+  <div class="spacer"></div>
+  <a class="back" href="index.html">← 工具箱</a>
+</header>
+
+<section class="panel">
+  <h2><span class="t">① 輸入</span>
+    <span class="spacer"></span>
+    <span class="note">改任何一欄都會立刻重算</span>
+  </h2>
+  <div class="two">
+    <div class="pane">
+      <div class="field wide"><label for="f_serve">送達日（收到那天）</label>
+        <input type="date" id="f_serve"></div>
+      <div class="field wide"><label for="f_kind">期間種類</label>
+        <select id="f_kind">
+          <option value="20|民訴440Ⅰ">民事上訴　20 日（民訴 440Ⅰ）</option>
+          <option value="10|民訴487">民事抗告　10 日（民訴 487）</option>
+          <option value="30|民訴500Ⅰ">再審之訴　30 日（民訴 500Ⅰ）</option>
+          <option value="20|民訴516Ⅰ">支付命令異議　20 日（民訴 516Ⅰ）</option>
+          <option value="10|強執12Ⅰ">強制執行聲明異議　10 日（強執 12Ⅰ）</option>
+          <option value="20|刑訴349">刑事上訴　20 日（刑訴 349）</option>
+          <option value="10|刑訴406">刑事抗告　10 日（刑訴 406）</option>
+          <option value="10|刑訴416Ⅲ">刑事準抗告　10 日（刑訴 416Ⅲ）</option>
+          <option value="custom|自訂">自訂日數</option>
+        </select></div>
+      <div class="field"><label for="f_days">日數</label>
+        <input type="number" id="f_days" min="1" step="1"></div>
+      <div class="field"><label for="f_transit">在途期間<span class="spec">日</span></label>
+        <input type="number" id="f_transit" min="0" step="1" value="0"></div>
+      <label class="check"><input type="checkbox" id="f_sat" checked>
+        <span>星期六也算休息日<small>法院週休二日，實務上末日逢週六順延至週一</small></span></label>
+      <div class="field wide"><label for="f_holidays">自訂休息日（一行一個 YYYY-MM-DD）</label>
+        <textarea id="f_holidays" spellcheck="false" placeholder="2027-01-01&#10;2027-02-16"></textarea></div>
+      <p class="hint">國定假日<strong>不內建</strong>（每年公告不同、還有補班日）。要精準就把該年度行事曆的休息日貼進來，會一起納入順延判斷。</p>
+    </div>
+    <div class="pane">
+      <p class="big" id="due">—<small id="dueNote">先選送達日</small></p>
+      <div class="stats" id="stats" style="margin-top:14px"></div>
+      <ol class="steps" id="steps" style="margin-top:14px"></ol>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2><span class="t">② 法條依據</span></h2>
+  <div class="body">
+    <table class="tbl">
+      <tbody>
+        <tr><td style="white-space:nowrap"><b>民法 120Ⅱ</b></td><td>以日、星期、月或年定期間者，其始日不算入。<span class="hint" style="display:inline">　→ 送達當天不算，從隔天起算。</span></td></tr>
+        <tr><td style="white-space:nowrap"><b>民法 121Ⅰ</b></td><td>以日、星期、月或年定期間者，以期間末日之終止，為期間之終止。</td></tr>
+        <tr><td style="white-space:nowrap"><b>民法 122</b></td><td>於一定期日或期間內，應為意思表示或給付者，其期日或其期間之末日，為星期日、紀念日或其他休息日時，以其休息日之次日代之。</td></tr>
+        <tr><td style="white-space:nowrap"><b>民訴 162Ⅰ</b></td><td>當事人不在法院所在地住居者，計算法定期間，應扣除其在途之期間。<span class="hint" style="display:inline">　→ 實際效果是往後延，日數依司法院在途期間標準表。</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer class="foot">
+  <strong>這只是試算。</strong>真正的期限以法院通知、判決正本記載與司法院在途期間標準表為準；
+  遇連續假期、颱風停班或跨年度行事曆變動，一定要再確認。期限錯過不能補救，寧可提早遞。
+</footer>
+
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const WD = ["日", "一", "二", "三", "四", "五", "六"];
+
+const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const show = d => `${d.getFullYear()} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日（星期${WD[d.getDay()]}）`;
+const roc = d => `民國 ${d.getFullYear() - 1911} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日`;
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+
+function holidaySet() {
+  const s = new Set();
+  $("f_holidays").value.split(/\r?\n/).forEach(l => {
+    const m = l.trim().match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+    if (m) s.add(`${m[1]}-${String(+m[2]).padStart(2, "0")}-${String(+m[3]).padStart(2, "0")}`);
+  });
+  return s;
+}
+
+function restReason(d, hol, sat) {
+  if (d.getDay() === 0) return "星期日";
+  if (sat && d.getDay() === 6) return "星期六";
+  if (hol.has(fmt(d))) return "自訂休息日";
+  return null;
+}
+
+function calc() {
+  const v = $("f_serve").value;
+  const steps = $("steps"), due = $("due"), note = $("dueNote");
+  if (!v) {
+    steps.innerHTML = ""; due.firstChild.textContent = "—";
+    note.textContent = "先選送達日"; $("stats").innerHTML = "";
+    return;
+  }
+  const [y, m, d] = v.split("-").map(Number);
+  const serve = new Date(y, m - 1, d);
+  const days = Math.max(1, parseInt($("f_days").value || 0, 10));
+  const transit = Math.max(0, parseInt($("f_transit").value || 0, 10));
+  const sat = $("f_sat").checked;
+  const hol = holidaySet();
+  const basis = $("f_kind").selectedOptions[0].value.split("|")[1];
+
+  const li = [];
+  li.push(`送達日 <b>${show(serve)}</b><small>${roc(serve)}</small>`);
+
+  const start = addDays(serve, 1);
+  li.push(`民法 120Ⅱ 始日不算入，自 <b>${show(start)}</b> 起算`);
+
+  let end = addDays(start, days - 1);
+  li.push(`${basis === "自訂" ? "自訂" : basis} 期間 <b>${days}</b> 日，末日為 <b>${show(end)}</b>`);
+
+  if (transit) {
+    end = addDays(end, transit);
+    li.push(`加計在途期間 <b>${transit}</b> 日 → <b>${show(end)}</b><small>民訴 162Ⅰ；日數依司法院在途期間標準表</small>`);
+  }
+
+  let moved = 0, reason = null;
+  while (true) {
+    const r = restReason(end, hol, sat);
+    if (!r) break;
+    reason = r; end = addDays(end, 1); moved++;
+    if (moved > 30) break;
+  }
+  if (moved) li.push(`末日為${reason}，民法 122 順延 <b>${moved}</b> 日 → <b>${show(end)}</b>`);
+  else li.push(`末日非休息日，<b>不須順延</b>`);
+
+  steps.innerHTML = li.map(t => `<li>${t}</li>`).join("");
+
+  due.innerHTML = `${end.getFullYear()} 年 ${end.getMonth() + 1} 月 ${end.getDate()} 日<small id="dueNote">${roc(end)}　星期${WD[end.getDay()]}　—— 這天 24 時前必須遞出</small>`;
+
+  const today = new Date();
+  const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const left = Math.round((end - t0) / 86400000);
+  $("stats").innerHTML =
+    `<span>距今 <b class="countdown">${left >= 0 ? left : "已逾期 " + (-left)}</b> ${left >= 0 ? "天" : "天"}</span>` +
+    `<span>起算日 <b>${fmt(start)}</b></span>` +
+    `<span>共 <b>${days + transit}</b> 日${moved ? `＋順延 ${moved}` : ""}</span>`;
+}
+
+function syncKind() {
+  const [n] = $("f_kind").value.split("|");
+  const custom = n === "custom";
+  $("f_days").disabled = false;
+  if (!custom) $("f_days").value = n;
+  calc();
+}
+
+/* 在途期間、休息日清單、週六設定記在這台裝置，下次打開沿用 */
+const KEEP = ["f_transit", "f_holidays", "f_sat"];
+try {
+  const saved = JSON.parse(localStorage.getItem("deadline-cfg") || "{}");
+  KEEP.forEach(k => { if (k in saved) { const el = $(k); if (el.type === "checkbox") el.checked = saved[k]; else el.value = saved[k]; } });
+} catch (e) {}
+function save() {
+  const o = {};
+  KEEP.forEach(k => { const el = $(k); o[k] = el.type === "checkbox" ? el.checked : el.value; });
+  try { localStorage.setItem("deadline-cfg", JSON.stringify(o)); } catch (e) {}
+}
+
+["f_serve", "f_days", "f_transit", "f_holidays"].forEach(id => $(id).addEventListener("input", () => { save(); calc(); }));
+$("f_sat").addEventListener("change", () => { save(); calc(); });
+$("f_kind").addEventListener("change", syncKind);
+
+// 預設帶今天，日數帶民事上訴 20 日
+const now = new Date();
+$("f_serve").value = fmt(now);
+syncKind();
+</script>
+</body>
+</html>

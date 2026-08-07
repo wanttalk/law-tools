@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>引文比對器</title>
+<link rel="stylesheet" href="assets/tool-ui.css">
+<style>
+/* 引文比對器專屬 */
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 820px) { .two { grid-template-columns: 1fr; } }
+.two label.cap { display: block; font-size: 12px; letter-spacing: .1em; color: var(--muted); margin-bottom: 7px; font-weight: 700; }
+.two .cap small { font-weight: 400; letter-spacing: normal; color: var(--faint); }
+.two .ta { min-height: 260px; }
+
+.seg { margin-top: 10px; padding-left: 14px; border-left: 2px solid var(--line); }
+.seg + .seg { margin-top: 12px; }
+.seg .head { font-size: 12.5px; color: var(--muted); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.ctx {
+  font-family: var(--kai); font-size: 15px; line-height: 1.9;
+  background: var(--surface); border: 1px solid var(--line-soft); border-radius: 3px;
+  padding: 8px 11px; margin-top: 6px; word-break: break-word;
+}
+.ctx mark { background: #FFF07A; color: #14171A; }
+.diff { font-family: var(--kai); font-size: 15px; line-height: 1.9; margin-top: 6px; word-break: break-word; }
+.legend { font-size: 11.5px; color: var(--faint); margin-top: 8px; }
+.legend ins, .legend del { font-family: var(--kai); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <a class="seal" href="index.html" title="回工具箱">校</a>
+  <div>
+    <h1>引文比對器</h1>
+    <p>把狀子裡的「」引文，逐字比對判決／筆錄全文。規則與 <code>verify_quotes.py</code> 相同：去除空白與 <code>**</code>／<code>==</code> 後，引文必須是原文的<strong>連續子字串</strong>。</p>
+  </div>
+  <div class="spacer"></div>
+  <a class="back" href="index.html">← 工具箱</a>
+</header>
+
+<section class="panel">
+  <h2><span class="t">① 貼上原文與引文</span>
+    <span class="spacer"></span>
+    <span class="note">兩邊都貼好會自動比對</span>
+  </h2>
+  <div class="body">
+    <div class="two">
+      <div>
+        <label class="cap" for="src">原文（判決／裁定／筆錄全文）<small>　從 20_判例庫/raw 或司法院網頁整篇貼進來</small></label>
+        <textarea id="src" class="ta" spellcheck="false" placeholder="貼上判決全文。可以連判決書的行號、頁首頁尾一起貼，比對時空白會被忽略。"></textarea>
+      </div>
+      <div>
+        <label class="cap" for="quo">你的狀子內容（或單獨的引文）<small>　自動抓出所有「」引文</small></label>
+        <textarea id="quo" class="ta" spellcheck="false" placeholder="貼上狀子段落，例如：&#10;按最高法院○○年度台上字第○○號判決「……」（參原證三）"></textarea>
+      </div>
+    </div>
+    <div class="toolbar" style="margin-top:12px">
+      <button class="primary" id="btnRun">重新比對</button>
+      <button id="btnCopy">複製比對報告</button>
+      <span class="spacer"></span>
+      <button class="ghost" id="btnSample">載入範例</button>
+      <button class="ghost" id="btnClear">清空</button>
+    </div>
+    <div class="stats" id="stats"></div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2><span class="t">② 比對結果</span>
+    <span class="spacer"></span>
+    <span class="chip" id="verdict"><span class="dot"></span>等待輸入</span>
+  </h2>
+  <div class="body" id="out">
+    <div class="empty">左右兩欄都貼上內容後，這裡會逐段列出比對結果。</div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2><span class="t">③ 比對設定</span></h2>
+  <div class="groups">
+    <div class="group">
+      <h3>抓引文的條件</h3>
+      <div class="field" id="fw_minLen">
+        <label for="f_minLen">最短引文字數<span class="spec">腳本 25</span></label>
+        <input type="number" id="f_minLen" min="4" step="1">
+      </div>
+      <div class="field" id="fw_segMin">
+        <label for="f_segMin">省略號切段後最短<span class="spec">腳本 8</span></label>
+        <input type="number" id="f_segMin" min="2" step="1">
+      </div>
+      <label class="check"><input type="checkbox" id="f_whole">
+        <span>整篇當成一則引文<small>右欄沒有「」符號、只貼一段文字時勾這個</small></span></label>
+      <p class="hint">短於門檻的「」視為一般強調（例如「本件」），不列入比對——與 verify_quotes.py 一致。</p>
+    </div>
+    <div class="group">
+      <h3>正規化</h3>
+      <label class="check"><input type="checkbox" id="f_ws" checked disabled>
+        <span>忽略所有空白與換行<small>固定開啟：判決全文常有行首空格與斷行</small></span></label>
+      <label class="check"><input type="checkbox" id="f_md" checked disabled>
+        <span>忽略 ** 粗體與 == 螢光標記<small>固定開啟</small></span></label>
+      <label class="check"><input type="checkbox" id="f_lineno">
+        <span>剝除判決 PDF 行號<small>官方 PDF 每行開頭的 1、2、3… 數字</small></span></label>
+      <p class="hint">全形半形、錯字一律不做「寬容比對」：原文錯字就照抄錯字，這是引用鐵律，不是程式的缺陷。</p>
+    </div>
+    <div class="group">
+      <h3>對不上的時候</h3>
+      <label class="check"><input type="checkbox" id="f_diff" checked>
+        <span>顯示逐字差異<small>在原文中找最接近的段落，標出多字／少字／改字</small></span></label>
+      <p class="hint">
+        <span class="legend"><del>紅色刪除線</del>＝你的引文多打了；<ins>綠色</ins>＝原文有但你漏了。</span>
+      </p>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  這是<strong>機器關</strong>。通過之後仍須點開司法院裁判書查詢網址人工二次確認（雙重確認制），才能遞狀。
+  本頁不會修改你的任何文字。
+</footer>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+
+const CFG = { minLen: 25, segMin: 8, whole: false, lineno: false, diff: true };
+try { Object.assign(CFG, JSON.parse(localStorage.getItem("quote-check-cfg") || "{}")); } catch (e) {}
+
+const ELLIPSIS = /(?:…|⋯|\.{2,}|．{2,})+/;
+
+/* ── 正規化：去空白、去 **／==，並保留回原文的索引對照 ───── */
+function norm(s) {
+  let out = "", map = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (/[\s　]/.test(c)) continue;
+    if ((c === "*" && s[i + 1] === "*") || (c === "=" && s[i + 1] === "=")) { i++; continue; }
+    out += c; map.push(i);
+  }
+  return { text: out, map };
+}
+
+/** 官方判決 PDF 每行開頭的行號：行首連續數字且後面接中文時剝除 */
+function stripLineNo(s) {
+  return s.split("\n").map(l => l.replace(/^\s*\d{1,3}\s+(?=\S)/, "")).join("\n");
+}
+
+function extractQuotes(text) {
+  if (CFG.whole) {
+    const t = text.trim();
+    return t ? [t] : [];
+  }
+  const re = /「((?:[^「」]|「[^「」]*」)+)」/g;
+  const out = [];
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (norm(m[1]).text.length >= CFG.minLen) out.push(m[1]);
+  }
+  return out;
+}
+
+function splitSegs(nq) {
+  const segs = nq.split(ELLIPSIS).filter(s => s.length >= CFG.segMin);
+  return segs.length ? segs : [nq];
+}
+
+/* ── 差異比對（LCS）：只在對不上時用來指出哪裡不一樣 ───── */
+function lcsDiff(a, b) {
+  const LIMIT = 700;
+  if (a.length > LIMIT) a = a.slice(0, LIMIT);
+  if (b.length > LIMIT) b = b.slice(0, LIMIT);
+  const n = a.length, m = b.length;
+  const dp = new Uint16Array((n + 1) * (m + 1));
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      dp[i * (m + 1) + j] = a[i] === b[j]
+        ? dp[(i + 1) * (m + 1) + j + 1] + 1
+        : Math.max(dp[(i + 1) * (m + 1) + j], dp[i * (m + 1) + j + 1]);
+  const out = [];
+  let i = 0, j = 0;
+  const push = (t, ch) => {
+    const last = out[out.length - 1];
+    if (last && last.t === t) last.s += ch; else out.push({ t, s: ch });
+  };
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { push("=", a[i]); i++; j++; }
+    else if (dp[(i + 1) * (m + 1) + j] >= dp[i * (m + 1) + j + 1]) { push("-", a[i]); i++; }
+    else { push("+", b[j]); j++; }
+  }
+  while (i < n) { push("-", a[i++]); }
+  while (j < m) { push("+", b[j++]); }
+  return out;
+}
+
+/** 在原文裡找與 seg 最相近的一段（錨點候選 + LCS 評分） */
+function bestWindow(src, seg) {
+  const step = Math.max(3, Math.floor(seg.length / 10));
+  const cands = new Set();
+  for (const size of [8, 5, 3]) {
+    for (let off = 0; off + size <= seg.length && cands.size < 60; off += step) {
+      const a = seg.substr(off, size);
+      let p = src.indexOf(a);
+      while (p >= 0 && cands.size < 60) { cands.add(Math.max(0, p - off)); p = src.indexOf(a, p + 1); }
+    }
+    if (cands.size) break;
+  }
+  if (!cands.size) return null;
+  let best = null;
+  for (const start of cands) {
+    const w = src.substr(start, Math.min(seg.length + 12, 700));
+    const d = lcsDiff(seg, w);
+    const same = d.filter(x => x.t === "=").reduce((n, x) => n + x.s.length, 0);
+    const score = same / Math.max(seg.length, 1);
+    if (!best || score > best.score) best = { score, start, win: w, diff: d };
+  }
+  // 視窗頭尾多抓的原文（純 + 片段）不是「你漏字」，是比對視窗的邊緣，去掉才不誤導
+  if (best) {
+    while (best.diff.length && best.diff[0].t === "+") best.diff.shift();
+    while (best.diff.length && best.diff[best.diff.length - 1].t === "+") best.diff.pop();
+  }
+  return best;
+}
+
+/* ── 比對主流程 ─────────────────────────────────────────── */
+const esc = t => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+let report = "";
+
+function run() {
+  let rawSrc = $("src").value;
+  if (CFG.lineno) rawSrc = stripLineNo(rawSrc);
+  const S = norm(rawSrc);
+  const quotes = extractQuotes($("quo").value);
+
+  const out = $("out"), chip = $("verdict");
+  if (!S.text || !quotes.length) {
+    out.innerHTML = `<div class="empty">${!S.text ? "左欄還沒有原文。" : "右欄沒有抓到符合條件的「」引文（可到設定勾「整篇當成一則引文」）。"}</div>`;
+    chip.className = "chip"; chip.innerHTML = '<span class="dot"></span>等待輸入';
+    $("stats").innerHTML = ""; report = "";
+    return;
+  }
+
+  let pass = 0;
+  const lines = [];
+  const html = quotes.map((q, i) => {
+    const nq = norm(q).text;
+    const segs = splitSegs(nq);
+    const results = segs.map(s => ({ s, at: S.text.indexOf(s) }));
+    const ok = results.every(r => r.at >= 0);
+    if (ok) pass++;
+    lines.push(`${ok ? "✔" : "✘"} 引文${i + 1}「${q.slice(0, 28)}…」${segs.length > 1 ? `（切 ${segs.length} 段）` : ""}`);
+
+    const body = results.map((r, k) => {
+      const label = segs.length > 1 ? `第 ${k + 1} 段` : "全段";
+      if (r.at >= 0) {
+        // 用索引對照回原文，連前後文一起顯示
+        const a = S.map[r.at], b = S.map[r.at + r.s.length - 1];
+        const ctxA = Math.max(0, a - 24), ctxB = Math.min(rawSrc.length, b + 25);
+        const ctx = esc(rawSrc.slice(ctxA, a)) + "<mark>" + esc(rawSrc.slice(a, b + 1)) + "</mark>" + esc(rawSrc.slice(b + 1, ctxB));
+        lines.push(`    ✔ ${label}（原文第 ${r.at + 1} 字起）`);
+        return `<div class="seg"><div class="head"><span class="tag good">✔ ${label}</span>
+          <span>命中原文第 ${(r.at + 1).toLocaleString()} 字（去空白計）・${r.s.length} 字</span></div>
+          <div class="ctx">…${ctx}…</div></div>`;
+      }
+      lines.push(`    ✘ ${label}「${r.s.slice(0, 20)}…」對不上`);
+      let diffHtml = "";
+      if (CFG.diff) {
+        const best = bestWindow(S.text, r.s);
+        if (best && best.score > 0.4) {
+          diffHtml = `<div class="diff">` + best.diff.map(d =>
+            d.t === "=" ? esc(d.s) : d.t === "-" ? `<del>${esc(d.s)}</del>` : `<ins>${esc(d.s)}</ins>`
+          ).join("") + `</div>
+          <div class="legend"><del>刪除線</del>＝你的引文有、原文沒有（多打或改寫）；<ins>綠底</ins>＝原文有、你漏掉。相似度 ${(best.score * 100).toFixed(0)}%</div>`;
+        } else {
+          diffHtml = `<div class="legend">在原文中找不到相近的段落——可能是引錯判決、字號記錯，或這段根本不在這份全文裡。</div>`;
+        }
+      }
+      return `<div class="seg"><div class="head"><span class="tag bad">✘ ${label}</span>
+        <span>不是原文的連續子字串</span></div>${diffHtml}</div>`;
+    }).join("");
+
+    return `<div class="result ${ok ? "pass" : "fail"}">
+      <h4>${ok ? "✔" : "✘"} 引文 ${i + 1}
+        <span class="tag">${nq.length} 字</span>
+        ${segs.length > 1 ? `<span class="tag">省略號切 ${segs.length} 段，須全部命中</span>` : ""}</h4>
+      <div class="quote">「${esc(q)}」</div>${body}</div>`;
+  }).join("");
+
+  out.innerHTML = html;
+  const bad = quotes.length - pass;
+  chip.className = "chip " + (bad ? "warn" : "ok");
+  chip.innerHTML = `<span class="dot"></span>${bad ? `${bad} 段對不上，禁止引用` : `${pass} 段全部逐字命中`}`;
+  $("stats").innerHTML = `引文 <b>${quotes.length}</b> 段　通過 <b>${pass}</b>　未通過 <b>${bad}</b>　原文 <b>${S.text.length.toLocaleString()}</b> 字（去空白）`;
+  report = `引文比對報告（${new Date().toLocaleString("zh-TW")}）\n原文 ${S.text.length} 字\n` + lines.join("\n") +
+           `\n\n結果：${pass} ✔ / ${bad} ✘\n※ 通過仍須點開司法院網址人工二次確認。`;
+}
+
+/* ── 設定與事件 ─────────────────────────────────────────── */
+function bind(id, key, type) {
+  const el = $(id);
+  el[type === "check" ? "checked" : "value"] = CFG[key];
+  el.addEventListener(type === "check" ? "change" : "input", () => {
+    CFG[key] = type === "check" ? el.checked : parseInt(el.value || 0, 10);
+    try { localStorage.setItem("quote-check-cfg", JSON.stringify(CFG)); } catch (e) {}
+    run();
+  });
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2400);
+}
+
+const SAMPLE_SRC = `臺灣臺北地方法院民事裁定
+    103年度聲字第762號
+    三、經查，聲請人主張相對人為信託人，未依信託契約及和解書內容，
+將應分配之信託財產交與聲請人，聲請人曾對相對人提起背信、侵占、
+偽造文書之刑事告訴，並民事訴訟請求相對人給付聲請人廖月華、
+陳其業共600萬元、莊坤明675萬元等情，本院審酌聲請人與相對人間
+有民、刑事訴訟繫屬，彼等間已無信賴基礎存在，堪認相對人已不適合
+擔任受託人職務，從而，聲請人依信託法第36條第2項聲請解任受託人，
+於法核無不合，應予准許。`;
+
+const SAMPLE_QUO = `按臺灣臺北地方法院103年度聲字第762號民事裁定「本院審酌聲請人與相對人間有民、刑事訴訟繫屬，彼等間已無信賴基礎存在，堪認相對人已不適合擔任受託人職務」（參原證九），本件情形與之相同。
+
+又同裁定亦載明「聲請人曾對相對人提起背信、侵佔、偽造文書等刑事告訴」，足見兩造信賴關係已蕩然無存。`;
+
+$("btnRun").addEventListener("click", run);
+$("btnCopy").addEventListener("click", async () => {
+  if (!report) return toast("還沒有比對結果");
+  try { await navigator.clipboard.writeText(report); toast("已複製比對報告"); }
+  catch (e) { toast("瀏覽器擋下複製，請手動選取"); }
+});
+$("btnSample").addEventListener("click", () => {
+  $("src").value = SAMPLE_SRC; $("quo").value = SAMPLE_QUO; run();
+});
+$("btnClear").addEventListener("click", () => { $("src").value = ""; $("quo").value = ""; run(); });
+["src", "quo"].forEach(id => $(id).addEventListener("input", run));
+bind("f_minLen", "minLen", "num");
+bind("f_segMin", "segMin", "num");
+bind("f_whole", "whole", "check");
+bind("f_lineno", "lineno", "check");
+bind("f_diff", "diff", "check");
+run();
+</script>
+</body>
+</html>

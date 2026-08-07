@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>書狀排版器</title>
+<link rel="stylesheet" href="assets/tool-ui.css">
+<style>
+/* ─────────────────────────────────────────────────────────────
+   書狀排版器 — 貼上純文字，依《00_範本/格式規格.md》即時套版
+   共用外觀在 assets/tool-ui.css；這裡只放「紙張預覽」的特有樣式。
+   ───────────────────────────────────────────────────────────── */
+
+textarea#src { min-height: 180px; }
+
+/* ── 紙張預覽 ───────────────────────────────────────────── */
+.paper-scroll { padding: 22px; background: var(--surface-2); border-radius: 0 0 4px 4px; overflow-x: auto; }
+.paper-fit { transform-origin: top left; }
+.paper {
+  position: relative;
+  background: var(--paper); color: var(--paper-ink);
+  border: 1px solid var(--paper-edge);
+  box-shadow: var(--shadow);
+  margin: 0 auto;
+}
+.paper .content { position: relative; }
+.paper p { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.paper mark { background: #FFF07A; color: inherit; }
+
+.guides { position: absolute; inset: 0; pointer-events: none; }
+.guide { position: absolute; left: 0; right: 0; border-top: 1px dashed color-mix(in srgb, var(--seal) 55%, transparent); }
+.guide span {
+  position: absolute; right: 0; top: 3px;
+  font-family: var(--ui); font-size: 9pt; letter-spacing: .1em;
+  color: var(--seal); background: var(--paper); padding-left: 6px;
+}
+
+/* 判讀標記（螢幕用，不列印、不匯出） */
+.paper.tags p { position: relative; }
+.paper.tags p::before {
+  content: attr(data-kind);
+  position: absolute; right: 100%; top: .35em; margin-right: 10px;
+  font-family: var(--ui); font-size: 8.5pt; line-height: 1.2; letter-spacing: .04em;
+  color: var(--faint); white-space: nowrap;
+}
+.paper.tags p[data-flag="title"]::before,
+.paper.tags p[data-flag="head"]::before { color: var(--accent); }
+
+/* ── 列印：只留紙張，版面由 @page 控制 ─────────────────── */
+@media print {
+  section.panel > h2, #inputPanel, #settingsPanel, .paper-scroll > .empty { display: none !important; }
+  .paper-scroll { padding: 0; background: #fff; overflow: visible; }
+  .paper-fit { transform: none !important; width: auto !important; height: auto !important; }
+  .paper { border: none; box-shadow: none; width: auto !important; padding: 0 !important; }
+  .paper.tags p::before { display: none; }
+  .guides { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <a class="seal" href="index.html" title="回工具箱">狀</a>
+  <div>
+    <h1>書狀排版器</h1>
+    <p>貼上純文字，立即套用《00_範本/格式規格.md》的court排版；下方每個參數都可以改，改完即時重排。</p>
+  </div>
+  <div class="spacer"></div>
+  <a class="back" href="index.html">← 工具箱</a>
+  <span class="chip" id="fontChip"><span class="dot"></span>字型偵測中</span>
+</header>
+
+<!-- ① 輸入 -->
+<section class="panel" id="inputPanel">
+  <h2><span class="t">① 貼上純文字</span>
+    <span class="spacer"></span>
+    <span class="note">支援 Markdown：<code>**粗體**</code>、<code>==螢光==</code>、<code>#</code> 狀名、<code>##</code> 章節</span>
+  </h2>
+  <div class="body">
+    <textarea id="src" class="ta" spellcheck="false" placeholder="把狀子的純文字整篇貼進來（第一行寫狀名，例如「民事準備書狀」）。&#10;程式會自動辨識狀名、案號股別、當事人欄、壹貳參／一二三／（一）／1. 各層編號、證據清單、謹狀、具狀人、日期，並套上標楷體 16pt、1.5 倍行距、首行縮排。"></textarea>
+    <div class="toolbar" style="margin-top:12px">
+      <button class="primary" id="btnPrint">列印／存成 PDF</button>
+      <button id="btnCopy">複製（含排版）→ 貼進 Google 文件</button>
+      <button id="btnDoc">下載 Word（.doc）</button>
+      <button id="btnMd">下載 Markdown 草稿</button>
+      <span class="spacer" style="flex:1"></span>
+      <button class="ghost" id="btnSample">載入範例</button>
+      <button class="ghost" id="btnClear">清空</button>
+    </div>
+    <div class="stats" id="stats"></div>
+  </div>
+</section>
+
+<!-- ② 預覽 -->
+<section class="panel">
+  <h2><span class="t">② 排版預覽</span>
+    <span class="spacer"></span>
+    <span class="note" id="pageInfo"></span>
+  </h2>
+  <div class="paper-scroll">
+    <div class="paper-fit" id="fit">
+      <div class="paper" id="paper">
+        <div class="content" id="content"></div>
+        <div class="guides" id="guides"></div>
+      </div>
+    </div>
+    <div class="empty" id="empty">尚未貼上文字。上方貼入純文字後，這裡會顯示 A4 實際版面。</div>
+  </div>
+</section>
+
+<!-- ③ 設定 -->
+<section class="panel" id="settingsPanel">
+  <h2><span class="t">③ 排版設定</span>
+    <span class="note">灰色＝格式規格標準值；<span style="color:var(--seal)">紅色</span>＝你已改動</span>
+    <span class="spacer"></span>
+    <span class="chip" id="specChip"><span class="dot"></span>完全符合格式規格</span>
+  </h2>
+  <div class="groups" id="groups"></div>
+  <div class="body toolbar">
+    <button id="btnReset">恢復格式規格預設值</button>
+    <button class="ghost" id="btnExportCfg">匯出設定 JSON</button>
+    <span class="note" style="color:var(--faint);font-size:12px">設定會自動記在這台裝置的瀏覽器裡。</span>
+  </div>
+</section>
+
+<footer class="foot">
+  正式送件版本仍以 <code>python scripts/make_docx.py 30_草稿/xxx.md</code> 產出的 .docx 為準；
+  審閱走 <code>push_tab.py</code> 推到 Google 文件分頁。本頁不修改任何文字內容，只做排版與結構判讀——
+  引文一字不漏鐵律照舊由 <code>verify_quotes.py</code> 把關。
+</footer>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ══════════════════════════════════════════════════════════
+   1. 排版參數（預設值＝00_範本/格式規格.md）
+   ══════════════════════════════════════════════════════════ */
+const SPEC = {
+  fontFamily:   "DFKai-SB",
+  bodyPt:       16,
+  titlePt:      26,
+  headPt:       16,
+  lineSpacing:  1.5,
+  spaceAfterPt: 8,
+  headBeforePt: 12,
+  topBeforePt:  16,
+  indentPt:     36,
+  pageW:        595,
+  pageH:        842,
+  marginTop:    72,
+  marginRight:  72,
+  marginBottom: 72,
+  marginLeft:   72,
+  titleAlign:   "left",
+  bodyAlign:    "justify",
+  footerTpl:    "第 {page} 頁，共 {total} 頁",
+  footerPt:     14,
+  autoStruct:   true,
+  mergeWrapped: false,
+  trimSpaces:   true,
+  showGuides:   true,
+  showTags:     false,
+  flushWords:   "案號,股別,案由,受文者,證物,證據,附件,附表,此致,謹狀,具狀人,撰狀人,中華民國,臺灣,台灣"
+};
+
+const PAPERS = { A4: [595, 842], Letter: [612, 792] };
+
+let cfg = loadCfg();
+
+function loadCfg() {
+  const c = Object.assign({}, SPEC);
+  try {
+    const s = JSON.parse(localStorage.getItem("petition-format-cfg") || "{}");
+    for (const k in c) if (k in s) c[k] = s[k];
+  } catch (e) { /* 讀不到就用預設 */ }
+  return c;
+}
+function saveCfg() {
+  try { localStorage.setItem("petition-format-cfg", JSON.stringify(cfg)); } catch (e) {}
+}
+
+/* ══════════════════════════════════════════════════════════
+   2. 結構判讀：純文字 → 有型別的段落
+   ══════════════════════════════════════════════════════════ */
+const CN = "一二三四五六七八九十百零〇";
+const RE = {
+  lvl1:      new RegExp("^[壹貳參肆伍陸柒捌玖拾]+[、．.]"),
+  lvl2:      new RegExp("^[" + CN + "]+[、．.]\\s*"),
+  lvl3:      new RegExp("^[（(][" + CN + "]+[）)]"),
+  lvl4:      new RegExp("^\\d+\\s*[、．.]"),
+  bracket:   /^【.{1,20}】\s*$/,
+  title:     /^(民事|刑事|行政|家事)[^。，、]{0,24}(狀|書)$/,
+  label:     /^(案號|股別|案由|字號|受文者|訴訟標的|訴訟標的金額|訴訟標的價額)\s*[：:]/,
+  party:     new RegExp("^(聲請人|相對人|原告|被告|上訴人|被上訴人|抗告人|相對人|再抗告人|債權人|債務人|告訴人|被告訴人|自訴人|參加人|第三人|異議人|聲明人|具狀人|法定代理人|訴訟代理人|複代理人|代理人|辯護人|輔佐人)\\s*[（(：:]"),
+  partySub:  /^(住居所|戶籍地址|送達代收人|住址|地址|住|居|設|址|電話|聯絡電話|行動電話|傳真|電子郵件|E-?mail|身分證統一編號|國民身分證統一編號|身分證字號|身分證|統一編號|營利事業統一編號|出生年月日)\s*[：:]?/i,
+  opening:   /^為.{2,80}[事件]\s*[，,、].{0,40}[事：:]\s*$/,
+  section:   /^(訴之聲明|聲明|聲請聲明|答辯聲明|上訴聲明|抗告聲明|反訴聲明|事實及理由|事實與理由|事實及證據|犯罪事實|事實|理由|證據清單|證物清單|附件清單|證據方法|結論|綜上所述|綜上所陳)\s*[：:]?\s*$/,
+  evidence:  new RegExp("^(原證|被證|上證|再證|附件|附表|證)\\s*[" + CN + "\\d]+\\s*[：:]"),
+  close:     /^(謹\s*狀|此\s*致|具狀人|撰狀人|中華民國|中\s*華\s*民\s*國)/,
+  court:     /^(臺灣|台灣|最高|智慧財產|司法院)[^。]{0,30}(法院|法庭|署|處)[^。]{0,12}(公\s*鑒|鈞鑒)?\s*$/
+};
+
+// 齊頭（不首行縮排）的自訂關鍵字
+function flushRe() {
+  const words = cfg.flushWords.split(/[,，\s]+/).filter(Boolean)
+    .map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return words.length ? new RegExp("^(?:" + words.join("|") + ")") : null;
+}
+
+/** 把一整篇純文字切成段落物件 */
+function parse(text) {
+  let lines = text.replace(/\r\n?/g, "\n").split("\n");
+  if (cfg.trimSpaces) lines = lines.map(l => l.replace(/[\t 　]+$/g, "").replace(/^[\t ]+/, ""));
+  lines = lines.filter(l => l.trim() !== "");
+
+  if (cfg.mergeWrapped) lines = mergeWrapped(lines);
+
+  const flush = flushRe();
+  const blocks = [];
+  let titleDone = false;
+
+  lines.forEach((line, i) => {
+    let raw = line, kind = null;
+
+    // Markdown 明示優先
+    if (raw.startsWith("## ")) { raw = raw.slice(3); kind = "section"; }
+    else if (raw.startsWith("# ")) { raw = raw.slice(2); kind = "title"; titleDone = true; }
+
+    const bare = raw.replace(/\*\*/g, "").replace(/==/g, "").trim();
+
+    if (!kind && cfg.autoStruct) {
+      if (!titleDone && i < 3 && RE.title.test(bare)) { kind = "title"; titleDone = true; }
+      else if (RE.bracket.test(bare) || RE.section.test(bare)) kind = "section";
+      else if (RE.lvl1.test(bare)) kind = "h1";
+      else if (RE.lvl2.test(bare)) kind = "h2";
+      else if (RE.lvl3.test(bare)) kind = "h3";
+      else if (RE.lvl4.test(bare)) kind = "h4";
+      else if (RE.label.test(bare)) kind = "label";
+      else if (RE.party.test(bare)) kind = "party";
+      else if (RE.partySub.test(bare)) kind = "partysub";
+      else if (RE.evidence.test(bare)) kind = "evidence";
+      else if (RE.opening.test(bare)) kind = "opening";
+      else if (RE.close.test(bare) || RE.court.test(bare)) kind = "close";
+      else if (flush && flush.test(bare)) kind = "flush";
+    }
+    if (!kind) kind = "body";
+
+    blocks.push({ kind, raw, spans: inline(raw, kind) });
+  });
+  return blocks;
+}
+
+/** 硬斷行接合：上一行沒有句末標點、下一行也不是結構行時，視為同一段 */
+function mergeWrapped(lines) {
+  const out = [];        // [{ text, struct }]
+  const endsSentence = /[。！？：；」』）\)】…]\s*$/;
+  const isStruct = l =>
+    RE.lvl1.test(l) || RE.lvl2.test(l) || RE.lvl3.test(l) || RE.lvl4.test(l) ||
+    RE.bracket.test(l) || RE.section.test(l) || RE.label.test(l) || RE.party.test(l) ||
+    RE.partySub.test(l) || RE.evidence.test(l) || RE.close.test(l) || RE.court.test(l) ||
+    RE.title.test(l) || l.startsWith("#") || l.startsWith("**");
+  lines.forEach((line, i) => {
+    const struct = isStruct(line) || (i < 3 && RE.title.test(line));
+    const prev = out[out.length - 1];
+    // 只有「上一行是普通內文、且句子沒收尾」時，才把這一行接上去
+    if (prev && !prev.struct && !struct && !endsSentence.test(prev.text)) {
+      prev.text += line;
+    } else out.push({ text: line, struct });
+  });
+  return out.map(o => o.text);
+}
+
+/** 解析 **粗體** / ==螢光==，並依型別自動加粗 */
+function inline(raw, kind) {
+  const spans = [];
+  let bold = false, hl = false;
+  raw.split(/(\*\*|==)/).forEach(seg => {
+    if (seg === "**") { bold = !bold; return; }
+    if (seg === "==") { hl = !hl; return; }
+    if (!seg) return;
+    spans.push({ t: seg, b: bold, h: hl });
+  });
+  if (!cfg.autoStruct) return spans;
+
+  const allBold = ["title", "section", "h1", "h2", "opening"].includes(kind);
+  if (allBold) return spans.map(s => ({ t: s.t, b: true, h: s.h }));
+
+  // 案號：／聲請人（即…）： — 冒號前的標籤加粗，內容維持正常
+  if (kind === "label" || kind === "party") {
+    const full = spans.map(s => s.t).join("");
+    const at = full.search(/[：:]/);
+    if (at >= 0) {
+      const cut = at + 1;
+      const out = []; let pos = 0;
+      spans.forEach(s => {
+        const a = pos, b = pos + s.t.length; pos = b;
+        if (b <= cut) out.push({ t: s.t, b: true, h: s.h });
+        else if (a >= cut) out.push(s);
+        else {
+          out.push({ t: s.t.slice(0, cut - a), b: true, h: s.h });
+          out.push({ t: s.t.slice(cut - a), b: s.b, h: s.h });
+        }
+      });
+      return out;
+    }
+  }
+  return spans;
+}
+
+/* ══════════════════════════════════════════════════════════
+   3. 每種段落的排版規則（單一來源，預覽／Word／Markdown 共用）
+   ══════════════════════════════════════════════════════════ */
+const KIND_LABEL = {
+  title: "狀名", section: "章節", h1: "壹層", h2: "一層", h3: "（一）層", h4: "1. 層",
+  label: "案號欄", party: "當事人", partysub: "當事人資料", opening: "起首語",
+  evidence: "證據", close: "結尾", flush: "齊頭", body: "內文"
+};
+
+function styleOf(kind) {
+  const s = {
+    size: cfg.bodyPt,
+    before: 0,
+    after: cfg.spaceAfterPt,
+    indent: 0,
+    align: cfg.bodyAlign
+  };
+  switch (kind) {
+    case "title":   s.size = cfg.titlePt; s.align = cfg.titleAlign; break;
+    case "section": s.size = cfg.headPt; s.before = cfg.headBeforePt; s.align = "left"; break;
+    case "h1":      s.before = cfg.topBeforePt; s.align = "left"; break;
+    case "h2": case "h3": case "h4":
+    case "label": case "party": case "partysub":
+    case "opening": case "evidence": case "close": case "flush":
+      s.align = "left"; break;
+    default:        s.indent = cfg.indentPt;
+  }
+  return s;
+}
+
+/* ══════════════════════════════════════════════════════════
+   4. 預覽渲染
+   ══════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const esc = t => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// 用單引號，才能安全放進 style="…" 屬性字串（匯出用）
+const fontStack = () =>
+  `'${cfg.fontFamily}', '標楷體', 'BiauKai', 'Kaiti TC', 'STKaiti', '楷体', serif`;
+
+let blocks = [];
+
+function render() {
+  const text = $("src").value;
+  blocks = text.trim() ? parse(text) : [];
+
+  const paper = $("paper"), content = $("content");
+  $("empty").style.display = blocks.length ? "none" : "block";
+  $("paper").style.display = blocks.length ? "block" : "none";
+
+  paper.style.width = cfg.pageW + "pt";
+  paper.style.paddingTop = cfg.marginTop + "pt";
+  paper.style.paddingRight = cfg.marginRight + "pt";
+  paper.style.paddingBottom = cfg.marginBottom + "pt";
+  paper.style.paddingLeft = cfg.marginLeft + "pt";
+  paper.style.fontFamily = fontStack();
+  paper.style.fontSize = cfg.bodyPt + "pt";
+  paper.style.lineHeight = cfg.lineSpacing;
+  paper.classList.toggle("tags", !!cfg.showTags);
+
+  content.innerHTML = blocks.map(b => {
+    const s = styleOf(b.kind);
+    const css = [
+      "font-size:" + s.size + "pt",
+      "line-height:" + cfg.lineSpacing,
+      "margin-top:" + s.before + "pt",
+      "margin-bottom:" + s.after + "pt",
+      "text-indent:" + s.indent + "pt",
+      "text-align:" + s.align
+    ].join(";");
+    const inner = b.spans.map(sp => {
+      let t = esc(sp.t);
+      if (sp.b) t = "<b>" + t + "</b>";
+      if (sp.h) t = "<mark>" + t + "</mark>";
+      return t;
+    }).join("");
+    return `<p data-kind="${KIND_LABEL[b.kind]}" data-flag="${b.kind === "title" ? "title" : (["section","h1","h2"].includes(b.kind) ? "head" : "")}" style="${css}">${inner || "&nbsp;"}</p>`;
+  }).join("");
+
+  drawGuides();
+  fitPaper();
+  updateStats();
+  injectPageRule();   // 讓 Ctrl+P 直接列印時也套用目前紙張與邊界
+}
+
+function drawGuides() {
+  const g = $("guides");
+  g.innerHTML = "";
+  if (!cfg.showGuides || !blocks.length) { $("pageInfo").textContent = ""; return; }
+  const PX = 4 / 3;                              // 1pt = 4/3 px（96dpi）
+  const pageH = (cfg.pageH - cfg.marginTop - cfg.marginBottom) * PX;
+  const total = $("content").offsetHeight;   // 用 offsetHeight：不受預覽縮放 transform 影響
+  const pages = Math.max(1, Math.ceil(total / pageH));
+  for (let i = 1; i < pages; i++) {
+    const d = document.createElement("div");
+    d.className = "guide";
+    d.style.top = (cfg.marginTop * PX + i * pageH) + "px";
+    d.innerHTML = `<span>第 ${i + 1} 頁</span>`;
+    g.appendChild(d);
+  }
+  $("pageInfo").textContent = `約 ${pages} 頁（分頁線為估算，實際以 Word／Google 文件為準）`;
+}
+
+function fitPaper() {
+  const wrap = $("fit").parentElement;
+  const avail = wrap.clientWidth - 44;
+  const w = cfg.pageW * 4 / 3;
+  const s = Math.min(1, avail / w);
+  $("fit").style.transform = `scale(${s})`;
+  $("fit").style.width = w + "px";
+  $("fit").style.height = s < 1 ? ($("paper").offsetHeight * s) + "px" : "auto";
+}
+
+function updateStats() {
+  const chars = blocks.reduce((n, b) => n + b.spans.reduce((m, s) => m + s.t.length, 0), 0);
+  const count = k => blocks.filter(b => b.kind === k).length;
+  $("stats").innerHTML = [
+    `段落 <b>${blocks.length}</b>`,
+    `字數 <b>${chars.toLocaleString()}</b>`,
+    `章節 <b>${count("section")}</b>`,
+    `壹層 <b>${count("h1")}</b>`,
+    `一層 <b>${count("h2")}</b>`,
+    `證據 <b>${count("evidence")}</b>`,
+    blocks.some(b => b.kind === "title") ? "狀名 <b>已辨識</b>" : "<b style='color:var(--seal)'>未辨識到狀名</b>"
+  ].join("");
+}
+
+/* ══════════════════════════════════════════════════════════
+   5. 設定面板
+   ══════════════════════════════════════════════════════════ */
+const GROUPS = [
+  { title: "頁面與頁碼", fields: [
+      { k: "paper", type: "select", label: "紙張", opts: [["A4", "A4 595×842pt"], ["Letter", "Letter 612×792pt"], ["custom", "自訂"]] },
+      { k: "pageW", type: "num", label: "頁寬", unit: "pt" },
+      { k: "pageH", type: "num", label: "頁高", unit: "pt" },
+      { k: "marginTop", type: "num", label: "上邊界", unit: "pt" },
+      { k: "marginBottom", type: "num", label: "下邊界", unit: "pt" },
+      { k: "marginLeft", type: "num", label: "左邊界", unit: "pt" },
+      { k: "marginRight", type: "num", label: "右邊界", unit: "pt" },
+      { k: "footerPt", type: "num", label: "頁尾字級", unit: "pt", step: 0.5 },
+      { k: "footerTpl", type: "text", label: "頁尾樣式（{page}＝目前頁、{total}＝總頁）", wide: true }
+    ], hint: "格式規格：A4、四邊 72pt（2.54cm）。範本A的原始 Google 文件其實是 Letter 612×792pt，要完全比照範本時才切 Letter。<br>頁尾會寫進下載的 Word 檔並自動計算頁碼；瀏覽器列印不支援自訂頁尾，請用 Word 或 Google 文件的頁尾。" },
+
+  { title: "文字", fields: [
+      { k: "fontFamily", type: "text", label: "字型名稱" },
+      { k: "bodyPt", type: "num", label: "內文字級", unit: "pt", step: 0.5 },
+      { k: "titlePt", type: "num", label: "狀名字級", unit: "pt", step: 0.5 },
+      { k: "headPt", type: "num", label: "章節標題字級", unit: "pt", step: 0.5 },
+      { k: "lineSpacing", type: "num", label: "行距（倍）", step: 0.05 },
+      { k: "titleAlign", type: "select", label: "狀名對齊", opts: [["left", "靠左（同範本）"], ["center", "置中"]] },
+      { k: "bodyAlign", type: "select", label: "內文對齊", opts: [["justify", "左右對齊"], ["left", "靠左"]] }
+    ], hint: "Google 文件的標楷體內部名稱是 DFKai-SB；改成別的名字會讓匯出檔案套不到標楷體。" },
+
+  { title: "間距與縮排", fields: [
+      { k: "spaceAfterPt", type: "num", label: "段後間距", unit: "pt", step: 0.5 },
+      { k: "headBeforePt", type: "num", label: "章節標題段前", unit: "pt", step: 0.5 },
+      { k: "topBeforePt", type: "num", label: "壹貳參段前", unit: "pt", step: 0.5 },
+      { k: "indentPt", type: "num", label: "內文首行縮排", unit: "pt", step: 0.5 }
+    ], hint: "首行縮排只套在敘述段落；壹／一／（一）／1.、當事人欄、證據清單、謹狀等結構行一律齊頭。" },
+
+  { title: "判讀與檢視", fields: [
+      { k: "autoStruct", type: "check", label: "自動判斷結構並加粗", sub: "關掉後只認 Markdown 的 ** 與 #／##" },
+      { k: "mergeWrapped", type: "check", label: "合併硬斷行", sub: "從 PDF／截圖文字貼進來、一段被切成好幾行時勾選" },
+      { k: "trimSpaces", type: "check", label: "清除行首行尾多餘空白", sub: "只動空白，不動任何字（引文一字不漏）" },
+      { k: "showGuides", type: "check", label: "顯示分頁參考線" },
+      { k: "showTags", type: "check", label: "顯示判讀標記", sub: "在紙張左側標出每段被判成什麼型別，方便抓錯（不會列印、不會匯出）" },
+      { k: "flushWords", type: "area", label: "額外齊頭關鍵字（逗號分隔）" }
+    ], hint: "本工具不改寫任何文字：不換標點、不補字、不刪字，只判斷段落型別與套排版。" }
+];
+
+function buildSettings() {
+  const host = $("groups");
+  host.innerHTML = "";
+  GROUPS.forEach(g => {
+    const div = document.createElement("div");
+    div.className = "group";
+    div.innerHTML = `<h3>${g.title}</h3>`;
+    g.fields.forEach(f => div.appendChild(fieldEl(f)));
+    if (g.hint) div.insertAdjacentHTML("beforeend", `<p class="hint">${g.hint}</p>`);
+    host.appendChild(div);
+  });
+  syncSettings();
+}
+
+function fieldEl(f) {
+  const wrap = document.createElement("div");
+  if (f.type === "check") {
+    wrap.className = "check";
+    wrap.innerHTML = `<input type="checkbox" id="f_${f.k}"><span>${f.label}${f.sub ? `<small>${f.sub}</small>` : ""}</span>`;
+    wrap.querySelector("input").addEventListener("change", e => {
+      cfg[f.k] = e.target.checked; commit();
+    });
+    return wrap;
+  }
+  wrap.className = "field" + ((f.type === "area" || f.wide) ? " wide" : "");
+  wrap.id = "fw_" + f.k;
+  const spec = f.k in SPEC ? `<span class="spec" id="spec_${f.k}"></span>` : "";
+  const labelHtml = `<label for="f_${f.k}">${f.label}${f.unit ? "" : ""}${spec}</label>`;
+
+  if (f.type === "area") {
+    wrap.innerHTML = `${labelHtml}<textarea id="f_${f.k}" spellcheck="false"></textarea>`;
+  } else if (f.type === "select") {
+    wrap.innerHTML = `${labelHtml}<select id="f_${f.k}">${f.opts.map(o => `<option value="${o[0]}">${o[1]}</option>`).join("")}</select>`;
+  } else if (f.type === "text") {
+    wrap.innerHTML = `${labelHtml}<input type="text" id="f_${f.k}">`;
+  } else {
+    wrap.innerHTML = `${labelHtml}<input type="number" id="f_${f.k}" step="${f.step || 1}">`;
+  }
+
+  const el = wrap.querySelector("#f_" + f.k);
+  const ev = (f.type === "select") ? "change" : "input";
+  el.addEventListener(ev, e => {
+    if (f.k === "paper") { applyPaper(e.target.value); return; }
+    cfg[f.k] = (f.type === "num") ? parseFloat(e.target.value || 0) : e.target.value;
+    commit();
+  });
+  return wrap;
+}
+
+function applyPaper(name) {
+  if (PAPERS[name]) { cfg.pageW = PAPERS[name][0]; cfg.pageH = PAPERS[name][1]; }
+  commit();
+}
+
+function currentPaperName() {
+  for (const k in PAPERS) if (PAPERS[k][0] === cfg.pageW && PAPERS[k][1] === cfg.pageH) return k;
+  return "custom";
+}
+
+function syncSettings() {
+  GROUPS.forEach(g => g.fields.forEach(f => {
+    const el = $("f_" + f.k);
+    if (!el) return;
+    if (f.type === "check") el.checked = !!cfg[f.k];
+    else if (f.k === "paper") el.value = currentPaperName();
+    else el.value = cfg[f.k];
+
+    const spec = $("spec_" + f.k);
+    if (spec) {
+      const off = String(cfg[f.k]) !== String(SPEC[f.k]);
+      spec.textContent = off ? `規格 ${SPEC[f.k]}${f.unit || ""}` : (f.unit ? f.unit : "");
+      $("fw_" + f.k).classList.toggle("off", off);
+    }
+  }));
+  // 只算「排版」項目；顯示偏好（參考線、判讀標記）不算偏離規格
+  const VIEW_ONLY = ["showGuides", "showTags", "mergeWrapped", "trimSpaces", "autoStruct", "flushWords"];
+  const changed = Object.keys(SPEC)
+    .filter(k => !VIEW_ONLY.includes(k))
+    .filter(k => String(cfg[k]) !== String(SPEC[k]));
+  const chip = $("specChip");
+  if (chip) {
+    chip.className = "chip" + (changed.length ? " warn" : "");
+    chip.innerHTML = `<span class="dot"></span>${changed.length ? `已偏離格式規格 ${changed.length} 項` : "完全符合格式規格"}`;
+  }
+}
+
+function commit() { saveCfg(); syncSettings(); render(); }
+
+/* ══════════════════════════════════════════════════════════
+   6. 匯出
+   ══════════════════════════════════════════════════════════ */
+function paperHtml(forWord) {
+  const font = forWord ? `'${cfg.fontFamily}'` : fontStack();
+  return blocks.map(b => {
+    const s = styleOf(b.kind);
+    const css = [
+      "font-family:" + font,
+      "font-size:" + s.size + "pt",
+      "line-height:" + (forWord ? Math.round(cfg.lineSpacing * 100) + "%" : cfg.lineSpacing),
+      "margin:" + s.before + "pt 0 " + s.after + "pt 0",
+      "text-indent:" + s.indent + "pt",
+      "text-align:" + s.align
+    ].join(";");
+    const inner = b.spans.map(sp => {
+      let t = esc(sp.t);
+      if (sp.b) t = "<b>" + t + "</b>";
+      if (sp.h) t = `<span style="background:#FFFF00">${t}</span>`;
+      return `<span style="font-family:${font};font-size:${s.size}pt">${t}</span>`;
+    }).join("");
+    return `<p class="MsoNormal" style="${css}">${inner}</p>`;
+  }).join("\n");
+}
+
+function wordField(code) {
+  return `<!--[if supportFields]><span style='mso-element:field-begin'></span>${code}<span style='mso-element:field-separator'></span><![endif]-->1<!--[if supportFields]><span style='mso-element:field-end'></span><![endif]-->`;
+}
+
+function buildDoc() {
+  const footer = esc(cfg.footerTpl)
+    .replace("{page}", wordField("PAGE"))
+    .replace("{total}", wordField("NUMPAGES"));
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8">
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+<style>
+@page WordSection1 { size:${cfg.pageW}pt ${cfg.pageH}pt;
+  margin:${cfg.marginTop}pt ${cfg.marginRight}pt ${cfg.marginBottom}pt ${cfg.marginLeft}pt;
+  mso-footer:f1; mso-footer-margin:36.0pt; }
+div.WordSection1 { page:WordSection1; }
+p.MsoNormal { font-family:"${cfg.fontFamily}"; font-size:${cfg.bodyPt}pt; line-height:${Math.round(cfg.lineSpacing * 100)}%; margin:0 0 ${cfg.spaceAfterPt}pt 0; }
+p.MsoFooter { font-family:"${cfg.fontFamily}"; font-size:${cfg.footerPt}pt; text-align:center; margin:0; }
+b { font-weight:bold; }
+</style></head>
+<body lang="ZH-TW">
+<div class="WordSection1">
+${paperHtml(true)}
+</div>
+<div style="mso-element:footer" id="f1"><p class="MsoFooter">${footer}</p></div>
+</body></html>`;
+}
+
+function buildMarkdown() {
+  return blocks.map(b => {
+    const text = b.spans.map(sp => {
+      let t = sp.t;
+      if (sp.h) t = "==" + t + "==";
+      return t;
+    }).join("");
+    const bolded = b.spans.every(sp => sp.b) && b.spans.length > 0;
+    switch (b.kind) {
+      case "title":   return "# " + text;
+      case "section": return "## " + text;
+      case "h1": case "h2": case "opening":
+        return "**" + text + "**";
+      default:
+        if (b.kind === "label" || b.kind === "party") {
+          const at = text.search(/[：:]/);
+          if (at >= 0) return "**" + text.slice(0, at + 1) + "**" + text.slice(at + 1);
+        }
+        return bolded ? "**" + text + "**" : text;
+    }
+  }).join("\n\n");
+}
+
+function docName() {
+  const t = blocks.find(b => b.kind === "title");
+  const raw = t ? t.spans.map(s => s.t).join("") : "書狀";
+  return raw.replace(/[\\\/:*?"<>|]/g, "").trim() || "書狀";
+}
+
+function download(filename, content, mime) {
+  const blob = new Blob(["﻿" + content], { type: mime });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+async function copyRich() {
+  const html = `<div style="font-family:${fontStack()}">${paperHtml(false)}</div>`;
+  const plain = blocks.map(b => b.spans.map(s => s.t).join("")).join("\n");
+  try {
+    await navigator.clipboard.write([new ClipboardItem({
+      "text/html": new Blob([html], { type: "text/html" }),
+      "text/plain": new Blob([plain], { type: "text/plain" })
+    })]);
+    toast("已複製（含排版）— 到 Google 文件按 Ctrl+V");
+  } catch (e) {
+    const host = document.createElement("div");
+    host.style.cssText = "position:fixed;left:-9999px;top:0";
+    host.innerHTML = html;
+    document.body.appendChild(host);
+    const r = document.createRange(); r.selectNodeContents(host);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    const ok = document.execCommand("copy");
+    sel.removeAllRanges(); host.remove();
+    toast(ok ? "已複製（含排版）— 到 Google 文件按 Ctrl+V" : "瀏覽器擋下複製，請改用「下載 Word」");
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   7. 事件與啟動
+   ══════════════════════════════════════════════════════════ */
+let toastTimer;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+// 範例一律用虛構當事人與地址（本頁可能放在公開網址，不放任何真實個資）
+const SAMPLE = `民事準備書狀
+案號：115年度訴字第○○號
+股別：○股
+原告（即反訴被告）：王大明
+住址：臺北市中正區○○路○段○號○樓
+電話：0900-000-000
+被告（即反訴原告）：李小華
+設：臺北市大安區○○路○段○號
+為請求損害賠償事件，依法提出準備書狀事：
+【聲明】
+一、被告之訴駁回。
+二、訴訟費用由被告負擔。
+【事實及理由】
+壹、程序事項
+一、本件訴訟標的與前案不同，並無重複起訴之問題
+本件原告請求之訴訟標的為不當得利返還請求權，與前案請求之損害賠償請求權，訴訟標的並不相同，自無民事訴訟法第253條重複起訴禁止之適用。
+（一）前案訴訟標的之範圍
+1. 前案係以買賣契約解除後之回復原狀請求權為訴訟標的。
+2. 本件則係以被告無權占有系爭房屋所受之利益為訴訟標的，兩者顯然有別。
+貳、實體事項
+一、被告所稱之借款債權並不存在
+被告主張兩造間存有借款關係，惟迄未提出任何借據、匯款用途約定或利息計算依據，其主張顯屬無據。按民事訴訟法第277條前段規定「當事人主張有利於己之事實者，就其事實有舉證之責任」，定有明文。
+證據清單：
+原證一：不動產買賣契約書影本。
+原證二：114年度仲執字第○號民事裁定影本。
+謹 狀
+臺灣臺北地方法院民事庭 公鑒
+具狀人：王大明
+中華民國 115 年 8 月 6 日`;
+
+function init() {
+  buildSettings();
+  $("src").addEventListener("input", render);
+  $("btnPrint").addEventListener("click", () => {
+    if (!blocks.length) return toast("還沒有內容可以列印");
+    injectPageRule(); window.print();
+  });
+  $("btnCopy").addEventListener("click", () => blocks.length ? copyRich() : toast("還沒有內容可以複製"));
+  $("btnDoc").addEventListener("click", () => {
+    if (!blocks.length) return toast("還沒有內容可以下載");
+    download(docName() + ".doc", buildDoc(), "application/msword");
+    toast("已下載 .doc — Word 開啟後即為標楷體版面");
+  });
+  $("btnMd").addEventListener("click", () => {
+    if (!blocks.length) return toast("還沒有內容可以下載");
+    download(docName() + ".md", buildMarkdown(), "text/markdown;charset=utf-8");
+    toast("已下載 .md — 可放進 30_草稿/ 再跑 push_tab.py／make_docx.py");
+  });
+  $("btnSample").addEventListener("click", () => { $("src").value = SAMPLE; render(); });
+  $("btnClear").addEventListener("click", () => { $("src").value = ""; render(); $("src").focus(); });
+  $("btnReset").addEventListener("click", () => {
+    cfg = Object.assign({}, SPEC); commit(); toast("已恢復《格式規格.md》預設值");
+  });
+  $("btnExportCfg").addEventListener("click", () => {
+    download("排版設定.json", JSON.stringify(cfg, null, 2), "application/json");
+  });
+
+  addEventListener("resize", () => { fitPaper(); drawGuides(); });
+  detectFont();
+  render();
+}
+
+/** 依目前設定注入 @page，讓瀏覽器列印用同一組紙張與邊界 */
+function injectPageRule() {
+  let el = $("pageRule");
+  if (!el) { el = document.createElement("style"); el.id = "pageRule"; document.head.appendChild(el); }
+  el.textContent = `@page { size:${cfg.pageW}pt ${cfg.pageH}pt; margin:${cfg.marginTop}pt ${cfg.marginRight}pt ${cfg.marginBottom}pt ${cfg.marginLeft}pt; }`;
+}
+
+/** 量測法偵測本機是否真的有這套字型（document.fonts.check 會誤報，故改用寬度比對） */
+function hasFont(name) {
+  const probe = "測試字樣ABCあ國家賠償法";
+  const cv = document.createElement("canvas").getContext("2d");
+  const base = ["monospace", "serif", "sans-serif"];
+  return base.some(b => {
+    cv.font = `40px ${b}`;
+    const w0 = cv.measureText(probe).width;
+    cv.font = `40px '${name}', ${b}`;
+    return Math.abs(cv.measureText(probe).width - w0) > 0.5;
+  });
+}
+
+function detectFont() {
+  const chip = $("fontChip");
+  const ok = hasFont(cfg.fontFamily) || hasFont("標楷體");
+  chip.className = "chip" + (ok ? "" : " warn");
+  chip.innerHTML = `<span class="dot"></span>` + (ok
+    ? "本機有標楷體，預覽即實際字型"
+    : "本機沒有標楷體：預覽以替代字型顯示，匯出檔案仍寫入 " + cfg.fontFamily);
+}
+
+if (document.readyState === "loading") addEventListener("DOMContentLoaded", init);
+else init();
+</script>
+</body>
+</html>

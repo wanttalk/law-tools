@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>金額大寫轉換</title>
+<link rel="stylesheet" href="assets/tool-ui.css">
+<style>
+.out { font-family: var(--kai); font-size: 17px; line-height: 1.9; word-break: break-all; }
+.src-num { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }
+.bad-row td { color: var(--seal); }
+</style>
+</head>
+<body>
+<div class="wrap narrow">
+
+<header class="top">
+  <a class="seal" href="index.html" title="回工具箱">金</a>
+  <div>
+    <h1>金額大寫轉換</h1>
+    <p>阿拉伯數字轉國字大寫。看得懂「68萬2,683」「180萬」這種混寫，一次可貼多行。</p>
+  </div>
+  <div class="spacer"></div>
+  <a class="back" href="index.html">← 工具箱</a>
+</header>
+
+<section class="panel">
+  <h2><span class="t">① 輸入金額</span>
+    <span class="spacer"></span>
+    <span class="note">一行一筆</span>
+  </h2>
+  <div class="body">
+    <textarea id="src" class="ta mono" style="min-height:120px" spellcheck="false" placeholder="1802683&#10;68萬2,683&#10;6,400,000"></textarea>
+    <div class="toolbar" style="margin-top:12px">
+      <button id="btnCopy" class="primary">複製全部大寫</button>
+      <span class="spacer"></span>
+      <button class="ghost" id="btnSample">載入範例</button>
+      <button class="ghost" id="btnClear">清空</button>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2><span class="t">② 大寫結果</span></h2>
+  <div class="body"><div class="scroll-x"><table class="tbl" id="tbl">
+    <thead><tr><th class="num">原數字</th><th>國字大寫</th></tr></thead><tbody></tbody>
+  </table></div>
+  <div class="empty" id="empty">上面輸入數字就會即時轉換。</div></div>
+</section>
+
+<section class="panel">
+  <h2><span class="t">③ 格式</span></h2>
+  <div class="groups">
+    <div class="group">
+      <h3>前後綴</h3>
+      <div class="field"><label for="f_prefix">幣別前綴</label>
+        <select id="f_prefix"><option value="新臺幣">新臺幣</option><option value="新台幣">新台幣</option><option value="">不加</option></select></div>
+      <div class="field"><label for="f_suffix">結尾</label>
+        <select id="f_suffix"><option value="元整">元整</option><option value="元">元</option><option value="圓整">圓整</option></select></div>
+      <p class="hint">法院實務常見寫法：新臺幣壹佰捌拾萬元整。契約、本票用「圓整」也有。</p>
+    </div>
+    <div class="group">
+      <h3>大寫字樣</h3>
+      <div class="field"><label for="f_two">2 的寫法</label>
+        <select id="f_two"><option value="貳">貳</option><option value="兩">兩</option></select></div>
+      <p class="hint">小數點後兩位會轉成「角」「分」；超過兩位會四捨五入到分。</p>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  金額寫錯是狀子最容易被抓包的地方之一。轉出來之後，<strong>再對照一次阿拉伯數字</strong>，兩邊都要出現在狀子裡。
+</footer>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const D = ["零", "壹", "貳", "參", "肆", "伍", "陸", "柒", "捌", "玖"];
+const U = ["", "拾", "佰", "仟"];
+const B = ["", "萬", "億", "兆"];
+
+/** 4 位以內轉大寫（含中間補零） */
+function section(n) {
+  let s = "", zero = false;
+  const ds = [...String(n)].map(Number), len = ds.length;
+  ds.forEach((d, i) => {
+    const u = len - 1 - i;
+    if (d === 0) zero = true;
+    else { if (zero && s) s += "零"; zero = false; s += D[d] + U[u]; }
+  });
+  return s;
+}
+
+function toCap(n) {
+  n = Math.floor(n);
+  if (n === 0) return "零";
+  const parts = [];
+  let bi = 0;
+  while (n > 0) { parts.unshift({ v: n % 10000, b: bi }); n = Math.floor(n / 10000); bi++; }
+  let out = "";
+  parts.forEach((p, i) => {
+    if (p.v === 0) { if (out && i < parts.length - 1 && !out.endsWith("零")) out += "零"; return; }
+    if (i > 0 && p.v < 1000 && out && !out.endsWith("零")) out += "零";
+    out += section(p.v) + B[p.b];
+  });
+  return out.replace(/零+$/, "");
+}
+
+/** 讀得懂 68萬2,683 / 180萬 / 1,802,683 / 12.5萬 */
+function parseAmount(raw) {
+  const s = raw.replace(/[,，\s　新臺台幣元整圓NT$]/gi, "");
+  if (!s) return NaN;
+  if (/^\d+(\.\d+)?$/.test(s)) return parseFloat(s);
+  const re = /(\d+(?:\.\d+)?)(億|萬|仟|千|佰|百|拾|十)?/g;
+  const UNIT = { 億: 1e8, 萬: 1e4, 仟: 1e3, 千: 1e3, 佰: 100, 百: 100, 拾: 10, 十: 10 };
+  let total = 0, m, seen = false, consumed = 0;
+  while ((m = re.exec(s)) !== null) {
+    total += parseFloat(m[1]) * (m[2] ? UNIT[m[2]] : 1);
+    seen = true; consumed += m[0].length;
+  }
+  return (seen && consumed === s.length) ? total : NaN;
+}
+
+function render() {
+  const prefix = $("f_prefix").value, suffix = $("f_suffix").value, two = $("f_two").value;
+  const lines = $("src").value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const body = $("tbl").querySelector("tbody");
+  $("empty").style.display = lines.length ? "none" : "block";
+  $("tbl").style.display = lines.length ? "" : "none";
+
+  const copy = [];
+  body.innerHTML = lines.map(line => {
+    const n = parseAmount(line);
+    if (isNaN(n) || n < 0) return `<tr class="bad-row"><td class="src-num">${line}</td><td>看不懂這個數字</td></tr>`;
+    const whole = Math.floor(n);
+    const cents = Math.round((n - whole) * 100);
+    let text = prefix + toCap(whole);
+    if (cents) {
+      const jiao = Math.floor(cents / 10), fen = cents % 10;
+      // 有角分就不加「整」——「整」的意思正是沒有零頭
+      text += "元" + (jiao ? D[jiao] + "角" : "") + (fen ? D[fen] + "分" : "");
+    } else {
+      text += suffix;
+    }
+    if (two === "兩") text = text.replace(/貳/g, "兩");
+    copy.push(text);
+    return `<tr><td class="src-num">${whole.toLocaleString()}${cents ? "." + String(cents).padStart(2, "0") : ""}</td><td class="out">${text}</td></tr>`;
+  }).join("");
+  window.__copy = copy.join("\n");
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+["src", "f_prefix", "f_suffix", "f_two"].forEach(id => {
+  $(id).addEventListener(id === "src" ? "input" : "change", render);
+});
+$("btnSample").addEventListener("click", () => {
+  $("src").value = "1802683\n68萬2,683\n6,400,000\n180萬\n99000\n56661.5";
+  render();
+});
+$("btnClear").addEventListener("click", () => { $("src").value = ""; render(); });
+$("btnCopy").addEventListener("click", async () => {
+  if (!window.__copy) return toast("還沒有可複製的內容");
+  try { await navigator.clipboard.writeText(window.__copy); toast("已複製"); }
+  catch (e) { toast("瀏覽器擋下複製，請手動選取"); }
+});
+render();
+</script>
+</body>
+</html>

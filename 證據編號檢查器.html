@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>證據編號檢查器</title>
+<link rel="stylesheet" href="assets/tool-ui.css">
+<style>
+.issue { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--line-soft); font-size: 13.5px; }
+.issue:last-child { border-bottom: none; }
+.issue .what { flex: 1; }
+.issue .what small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.6; }
+.series { margin-bottom: 22px; }
+.series h3 { margin: 0 0 10px; font-size: 14px; letter-spacing: .06em; display: flex; align-items: center; gap: 10px; }
+.desc { font-family: var(--kai); font-size: 14.5px; }
+.miss { color: var(--faint); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <a class="seal" href="index.html" title="回工具箱">證</a>
+  <div>
+    <h1>證據編號檢查器</h1>
+    <p>貼上狀子全文，對照「證據清單」與內文所有（參原證N）引用，抓出跳號、重複、漏引與引到不存在的證物。</p>
+  </div>
+  <div class="spacer"></div>
+  <a class="back" href="index.html">← 工具箱</a>
+</header>
+
+<section class="panel">
+  <h2><span class="t">① 貼上狀子全文</span>
+    <span class="spacer"></span>
+    <span class="note">含證據清單那幾行一起貼</span>
+  </h2>
+  <div class="body">
+    <textarea id="src" class="ta" spellcheck="false" placeholder="把整份狀子貼進來（內文＋證據清單）。&#10;清單行認得：原證一：、被證3：、證十：、附件二：…&#10;內文引用認得：（參原證三）、(參證五)、（原證一、原證二）…"></textarea>
+    <div class="toolbar" style="margin-top:12px">
+      <button class="primary" id="btnRun">重新檢查</button>
+      <button id="btnCopy">複製檢查報告</button>
+      <span class="spacer"></span>
+      <button class="ghost" id="btnSample">載入範例</button>
+      <button class="ghost" id="btnClear">清空</button>
+    </div>
+    <div class="stats" id="stats"></div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2><span class="t">② 問題清單</span>
+    <span class="spacer"></span>
+    <span class="chip" id="verdict"><span class="dot"></span>等待輸入</span>
+  </h2>
+  <div class="body" id="issues"><div class="empty">貼上狀子後，這裡會列出所有編號問題。</div></div>
+</section>
+
+<section class="panel">
+  <h2><span class="t">③ 逐號對照表</span></h2>
+  <div class="body" id="tables"></div>
+</section>
+
+<footer class="foot">
+  只檢查<strong>編號</strong>：對不對得上、有沒有跳號漏引。證物<strong>內容</strong>是否與敘述相符，仍要人看。
+  引文本身的逐字核對請用<a href="引文比對器.html">引文比對器</a>。
+</footer>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = t => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+const KINDS = ["原證", "被證", "上證", "再證", "附件", "附表", "證"];
+const CN = { 零: 0, 〇: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+
+/** 中文數字轉阿拉伯（支援到 999，足夠證物編號用） */
+function cn2num(s) {
+  if (/^\d+$/.test(s)) return parseInt(s, 10);
+  let total = 0, section = 0, num = 0;
+  for (const c of s) {
+    if (c in CN) { num = CN[c]; }
+    else if (c === "十") { section += (num || 1) * 10; num = 0; }
+    else if (c === "百") { section += (num || 1) * 100; num = 0; }
+    else return NaN;
+  }
+  return total + section + num;
+}
+
+const NUM = "[一二三四五六七八九十百零〇\\d]+";
+const listRe = new RegExp("^\\s*(?:\\*\\*)?(" + KINDS.join("|") + ")\\s*(" + NUM + ")\\s*[：:]\\s*(.*)$");
+const refRe = new RegExp("(" + KINDS.join("|") + ")\\s*(" + NUM + ")", "g");
+
+function analyse(text) {
+  const lines = text.split(/\r?\n/);
+  const series = {};   // kind → { list: Map(no → {raw, desc, line}), refs: Map(no → {count, raw}) }
+  const S = k => (series[k] = series[k] || { list: new Map(), refs: new Map(), forms: new Set() });
+
+  const bodyParts = [];
+  lines.forEach((line, i) => {
+    const m = line.match(listRe);
+    if (m) {
+      const [, kind, rawNo, desc] = m;
+      const no = cn2num(rawNo);
+      const s = S(kind);
+      s.forms.add(/^\d+$/.test(rawNo) ? "阿拉伯" : "中文");
+      if (!isNaN(no)) {
+        if (s.list.has(no)) s.list.get(no).dup.push(i + 1);
+        else s.list.set(no, { raw: rawNo, desc: desc.trim(), line: i + 1, dup: [] });
+      }
+      return;                       // 清單行不再算成內文引用
+    }
+    bodyParts.push(line);
+  });
+
+  const body = bodyParts.join("\n");
+  let m;
+  refRe.lastIndex = 0;
+  while ((m = refRe.exec(body)) !== null) {
+    const [, kind, rawNo] = m;
+    // 「證」是其他種類的字尾（原證/被證），只在不是接在別的字後面時才算
+    if (kind === "證" && /[原被上再]/.test(body[m.index - 1] || "")) continue;
+    const no = cn2num(rawNo);
+    if (isNaN(no)) continue;
+    const s = S(kind);
+    s.forms.add(/^\d+$/.test(rawNo) ? "阿拉伯" : "中文");
+    const r = s.refs.get(no) || { count: 0, raw: rawNo };
+    r.count++; s.refs.set(no, r);
+  }
+  return series;
+}
+
+function render() {
+  const text = $("src").value;
+  const series = text.trim() ? analyse(text) : {};
+  const kinds = Object.keys(series).filter(k => series[k].list.size || series[k].refs.size);
+
+  const issues = [], reportLines = [];
+  let listTotal = 0, refTotal = 0;
+
+  const tbl = kinds.map(kind => {
+    const s = series[kind];
+    const nums = [...new Set([...s.list.keys(), ...s.refs.keys()])].sort((a, b) => a - b);
+    // 跳號只看「清單」最大號；引用到清單沒有的號另有專門提示，不重複報
+    const max = s.list.size ? Math.max(...s.list.keys()) : 0;
+    listTotal += s.list.size;
+    refTotal += [...s.refs.values()].reduce((n, r) => n + r.count, 0);
+
+    // 1. 跳號
+    const gaps = [];
+    for (let i = 1; i <= max; i++) if (!s.list.has(i)) gaps.push(i);
+    if (gaps.length && s.list.size) {
+      issues.push({ lv: "bad", t: `${kind}編號跳號`, d: `清單缺少 ${gaps.map(n => kind + n).join("、")}（最大到 ${kind}${max}）` });
+    }
+    // 2. 重複
+    s.list.forEach((v, no) => {
+      if (v.dup.length) issues.push({ lv: "bad", t: `${kind}${v.raw} 重複列出`, d: `第 ${v.line} 行與第 ${v.dup.join("、")} 行都是 ${kind}${v.raw}` });
+    });
+    // 3. 引用了清單沒有的
+    s.refs.forEach((r, no) => {
+      if (!s.list.has(no)) issues.push({ lv: "bad", t: `內文引用 ${kind}${r.raw}，證據清單裡沒有`, d: `內文出現 ${r.count} 次。要嘛補進清單，要嘛改成正確編號。` });
+    });
+    // 4. 清單有但沒引用
+    s.list.forEach((v, no) => {
+      if (!s.refs.has(no)) issues.push({ lv: "warn", t: `${kind}${v.raw} 列在清單，內文卻沒引用`, d: v.desc ? `清單記載：${v.desc}` : "" });
+    });
+    // 5. 中文／阿拉伯混用
+    if (s.forms.size > 1) issues.push({ lv: "warn", t: `${kind}編號中文與阿拉伯數字混用`, d: "同一份狀子裡建議統一（本專案慣例用中文：原證一、原證二）。" });
+
+    const rows = nums.map(no => {
+      const inList = s.list.get(no), ref = s.refs.get(no);
+      const state = !inList ? '<span class="tag bad">清單沒有</span>'
+        : !ref ? '<span class="tag">未被引用</span>'
+        : inList.dup.length ? '<span class="tag bad">重複列出</span>'
+        : '<span class="tag good">正常</span>';
+      return `<tr>
+        <td class="num">${kind}${inList ? inList.raw : (ref ? ref.raw : no)}</td>
+        <td>${inList ? "✔" : '<span class="miss">—</span>'}</td>
+        <td class="num">${ref ? ref.count : 0}</td>
+        <td class="desc">${inList ? esc(inList.desc) || '<span class="miss">（未寫說明）</span>' : '<span class="miss">—</span>'}</td>
+        <td>${state}</td></tr>`;
+    }).join("");
+
+    return `<div class="series"><h3>${kind}<span class="chip">清單 ${s.list.size} 項</span></h3>
+      <div class="scroll-x"><table class="tbl">
+        <thead><tr><th class="num">編號</th><th>在清單</th><th class="num">內文引用</th><th>清單記載</th><th>狀態</th></tr></thead>
+        <tbody>${rows}</tbody></table></div></div>`;
+  }).join("");
+
+  $("tables").innerHTML = tbl || '<div class="empty">還沒有抓到任何證據編號。</div>';
+
+  const bad = issues.filter(i => i.lv === "bad").length;
+  $("issues").innerHTML = issues.length
+    ? issues.map(i => `<div class="issue"><span class="tag ${i.lv === "bad" ? "bad" : ""}">${i.lv === "bad" ? "問題" : "提醒"}</span>
+        <div class="what">${esc(i.t)}${i.d ? `<small>${esc(i.d)}</small>` : ""}</div></div>`).join("")
+    : (text.trim() ? '<div class="empty">沒有發現編號問題。</div>' : '<div class="empty">貼上狀子後，這裡會列出所有編號問題。</div>');
+
+  const chip = $("verdict");
+  if (!text.trim()) { chip.className = "chip"; chip.innerHTML = '<span class="dot"></span>等待輸入'; }
+  else { chip.className = "chip " + (bad ? "warn" : issues.length ? "" : "ok");
+    chip.innerHTML = `<span class="dot"></span>${bad ? `${bad} 個問題` : issues.length ? `${issues.length} 個提醒` : "編號無誤"}`; }
+
+  $("stats").innerHTML = `證據清單 <b>${listTotal}</b> 項　內文引用 <b>${refTotal}</b> 處　問題 <b>${bad}</b>　提醒 <b>${issues.length - bad}</b>`;
+
+  reportLines.push(`證據編號檢查（${new Date().toLocaleString("zh-TW")}）`,
+    `清單 ${listTotal} 項、內文引用 ${refTotal} 處`, "");
+  issues.forEach(i => reportLines.push(`${i.lv === "bad" ? "✘" : "⚠"} ${i.t}${i.d ? "：" + i.d : ""}`));
+  if (!issues.length) reportLines.push("✔ 沒有發現編號問題。");
+  window.__report = reportLines.join("\n");
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2400);
+}
+
+const SAMPLE = `民事準備書狀
+壹、事實經過
+　　兩造於112年11月29日簽訂不動產買賣契約（參原證一），並於同年12月7日簽署價金信託契約（參原證二）。
+　　被告嗣後拒不履行，經原告聲請仲裁，取得仲裁判斷書（參原證三）。
+　　關於執行程序，詳如法院核發之執行命令所示（參原證五）。
+　　被告於社群網站自承其資金流向（參原證八）。
+證據清單：
+原證一：不動產買賣契約書影本。
+原證二：價金信託契約書影本。
+原證三：113年度華仲裁字第13號仲裁判斷書。
+原證三：（重複列出的測試行）。
+原證四：114年度仲執字第5號民事裁定。
+原證6：戶籍謄本。`;
+
+$("btnRun").addEventListener("click", render);
+$("btnSample").addEventListener("click", () => { $("src").value = SAMPLE; render(); });
+$("btnClear").addEventListener("click", () => { $("src").value = ""; render(); });
+$("btnCopy").addEventListener("click", async () => {
+  if (!window.__report) return toast("還沒有檢查結果");
+  try { await navigator.clipboard.writeText(window.__report); toast("已複製檢查報告"); }
+  catch (e) { toast("瀏覽器擋下複製，請手動選取"); }
+});
+$("src").addEventListener("input", render);
+render();
+</script>
+</body>
+</html>
