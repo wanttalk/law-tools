@@ -40,17 +40,12 @@ button.link.danger { color: var(--seal); }
 }
 .panel .ph { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .panel .empty, .fine { color: var(--muted); font-size: 12.5px; line-height: 1.6; }
-.cm { border-left: 3px solid #f08c00; background: #fffbe6; padding: 8px 10px; margin-bottom: 10px; border-radius: 0 4px 4px 0; color: #3d2a00; }
+.cm { cursor: pointer; border-left: 3px solid #f08c00; background: #fffbe6; padding: 8px 10px; margin-bottom: 10px; border-radius: 0 4px 4px 0; color: #3d2a00; }
 .cm .meta { font-size: 12px; color: #8a6d1f; margin-bottom: 4px; }
 .cm .txt { font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
 .cm .row { margin-top: 6px; display: flex; gap: 10px; font-size: 13px; }
 
-.modal { position: fixed; inset: 0; background: rgba(15, 20, 28, .45); display: grid; place-items: center; z-index: 50; padding: 16px; }
-.dialog { background: var(--surface); border-radius: 8px; box-shadow: var(--shadow); padding: 18px; width: min(460px, 100%); }
-.dialog h2 { margin: 0 0 6px; font-size: 17px; }
-.dialog .target { margin: 0 0 10px; font-size: 13.5px; color: var(--muted); line-height: 1.6; }
-.dialog textarea { width: 100%; border: 1px solid var(--line); border-radius: 4px; padding: 10px; font-size: 16px; line-height: 1.6; resize: vertical; background: var(--surface-2); }
-.dialog .row, .setup .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.setup .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
 .setup { min-height: 100%; display: grid; place-items: center; padding: 24px 16px; }
 .setup .card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 22px; width: min(560px, 100%); box-shadow: var(--shadow); }
@@ -63,3 +58,37 @@ button.link.danger { color: var(--seal); }
 .setup summary { cursor: pointer; color: var(--muted); font-size: 13.5px; }
 .setup .primary { width: 100%; padding: 10px; font-size: 15px; }
 .setup .err { background: var(--seal-soft); color: var(--seal); padding: 8px 10px; border-radius: 4px; font-size: 13.5px; }
+
+button.on { box-shadow: 0 0 0 3px #ffd43b; }
+button.link.subtle { color: var(--muted); text-decoration: none; font-size: 12.5px; }
+.grow { flex: 1; }
+.stage.commenting canvas { cursor: crosshair !important; }
+.cm .num { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: #fab005; color: #3d2a00; font-weight: 700; font-size: 11px; margin-right: 6px; }
+
+/* 圖釘：黃色編號圓點，跟著方塊走 */
+.pins { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 3; }
+.pin {
+  position: absolute; transform: translate(-50%, -50%); pointer-events: auto;
+  width: 26px; height: 26px; min-height: 0; padding: 0; border-radius: 50% 50% 50% 4px;
+  background: #fab005; border: 2px solid #fff; color: #3d2a00; font-weight: 800; font-size: 13px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.25); cursor: pointer;
+}
+.pin:hover, .pin.open { background: #f08c00; color: #fff; border-color: #fff; transform: translate(-50%, -50%) scale(1.15); }
+.pop {
+  position: absolute; pointer-events: auto; width: 280px; z-index: 4;
+  background: #fffbe6; border: 1px solid #f5d77a; border-radius: 8px; box-shadow: var(--shadow);
+  padding: 10px 12px; color: #3d2a00;
+}
+.pop .meta { font-size: 12px; color: #8a6d1f; margin-bottom: 4px; }
+.pop .txt { font-size: 14.5px; line-height: 1.6; white-space: pre-wrap; }
+.pop .row { display: flex; gap: 12px; margin-top: 8px; font-size: 13px; align-items: center; }
+
+/* 就地留言框 */
+.composer-bg { position: fixed; inset: 0; z-index: 60; }
+.composer {
+  position: fixed; width: 320px; background: var(--surface); border: 1px solid #f5d77a; border-top: 4px solid #fab005;
+  border-radius: 8px; box-shadow: var(--shadow); padding: 10px 12px;
+}
+.composer .ct { font-size: 13px; color: var(--muted); margin-bottom: 6px; line-height: 1.5; }
+.composer textarea { width: 100%; border: 1px solid var(--line); border-radius: 4px; padding: 8px; font-size: 16px; line-height: 1.55; resize: vertical; background: var(--surface-2); }
+.composer .row { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
