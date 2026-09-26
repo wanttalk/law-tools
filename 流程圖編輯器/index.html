@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>流程圖編輯器</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="../assets/tool-ui.css">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="editor.css">
+<script>
+  // Excalidraw 字型（含中文手寫字型 Xiaolai）從 jsDelivr 載入，不隨工具箱打包（14MB）。
+  window.EXCALIDRAW_ASSET_PATH = new URLSearchParams(location.search).get("assets")
+    || "https://cdn.jsdelivr.net/npm/@excalidraw/excalidraw@0.18.1/dist/prod/";
+</script>
+</head>
+<body>
+<div id="root"><div class="loading">載入中…</div></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
